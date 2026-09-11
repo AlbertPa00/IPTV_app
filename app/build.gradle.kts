@@ -6,6 +6,11 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+val signingPropsFile = rootProject.file("keystore.properties")
+val signingProps = java.util.Properties().apply {
+    if (signingPropsFile.exists()) signingPropsFile.inputStream().use(::load)
+}
+
 android {
     namespace = "com.iptv.app"
     compileSdk = 35
@@ -15,9 +20,23 @@ android {
         minSdk = 24
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        // La clave de subida vive fuera del repo (keystore.properties +
+        // el fichero de claves, ambos en .gitignore). Sin el fichero la
+        // release se compila sin firmar: sirve para smoke tests en CI.
+        if (signingProps.isEmpty.not()) {
+            create("release") {
+                storeFile = rootProject.file(signingProps.getProperty("storeFile"))
+                storePassword = signingProps.getProperty("storePassword")
+                keyAlias = signingProps.getProperty("keyAlias")
+                keyPassword = signingProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -28,6 +47,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 
@@ -35,7 +55,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     packaging.resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
 }
 

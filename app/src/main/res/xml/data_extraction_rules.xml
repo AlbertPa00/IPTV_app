@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ (cloud backup y device-to-device): mismo criterio que en
+     backup_rules.xml. Además la clave Keystore no sobrevive a la
+     restauración, así que las credenciales cifradas serían irrecuperables. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="iptv.db" />
+        <exclude domain="file" path="playlists" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="iptv.db" />
+        <exclude domain="file" path="playlists" />
+    </device-transfer>
+</data-extraction-rules>

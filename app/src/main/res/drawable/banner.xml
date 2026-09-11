@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Banner de Android TV (320x180 en la guía; el sistema escala el vector). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:fillColor="#FF0B0C0F" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#FFE5093D" android:pathData="M132,54L196,90L132,126z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M104,148h112v6h-112z" />
+</vector>

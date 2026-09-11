@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pre-Android 12 (full backup): la base de datos y las listas copiadas
+     contienen credenciales/URLs con credenciales embebidas. No se suben a
+     Drive: tras una restauración el usuario vuelve a añadir sus fuentes. -->
+<full-backup-content>
+    <exclude domain="database" path="iptv.db" />
+    <exclude domain="file" path="playlists" />
+</full-backup-content>
