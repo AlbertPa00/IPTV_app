@@ -53,4 +53,34 @@
     <string name="sources_delete_no">Cancel</string>
     <string name="sources_last_sync">Last updated: %1$s</string>
     <string name="sources_last_sync_never">Never synced</string>
+
+    <!-- Settings -->
+    <string name="settings_options_title">Options</string>
+    <string name="settings_auto_refresh">Automatic refresh</string>
+    <string name="settings_auto_refresh_sub">Refreshes your playlist and guide once a day in the background</string>
+    <string name="settings_wifi_only">Wi-Fi only</string>
+    <string name="settings_wifi_only_sub">Do not download catalog or guide on mobile data</string>
+    <string name="settings_parental_title">Parental control</string>
+    <string name="settings_parental">PIN lock</string>
+    <string name="settings_parental_on_sub">Locked categories are hidden across the whole app</string>
+    <string name="settings_parental_off_sub">Protect the categories you choose with a PIN</string>
+    <string name="settings_parental_manage">Manage locked categories</string>
+    <string name="settings_locked_categories">Locked categories</string>
+    <string name="settings_about_title">About</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_licenses">Open-source licenses</string>
+    <string name="settings_licenses_body">This app uses open-source software:\n\n• AndroidX / Jetpack Compose — Apache-2.0\n• Media3 (ExoPlayer) — Apache-2.0\n• Google Cast SDK — Google Cast SDK Terms\n• Hilt — Apache-2.0\n• Room — Apache-2.0\n• OkHttp — Apache-2.0\n• Coil — Apache-2.0\n• kotlinx.coroutines / kotlinx.serialization — Apache-2.0\n• NanoHTTPD — BSD-3-Clause\n• FFmpegKit (https) — LGPL-3.0 / Apache-2.0\n• kxml2 — MIT</string>
+    <string name="settings_privacy">Privacy policy</string>
+    <string name="settings_privacy_body">This app is a player only: it does not include, host or distribute channels or content.\n\nYour data stays on your device. Playlists, login credentials, favorites and history are stored locally on your phone and are never sent to our servers or third parties.\n\nAccount passwords are stored encrypted with the Android Keystore (AES-GCM) and never appear in logs.\n\nThe app only connects to your IPTV provider\'s servers to download your playlist, the program guide and play the content you configured.\n\nThere are no ads, no trackers and no third-party analytics.\n\nYou can delete all your data at any time from System Settings → Apps → Clear data.</string>
+    <string name="pin_field">PIN (4 digits)</string>
+    <string name="pin_create_title">Create parental PIN</string>
+    <string name="pin_confirm_title">Repeat the PIN</string>
+    <string name="pin_unlock_disable_title">Enter PIN to disable</string>
+    <string name="pin_unlock_manage_title">Enter PIN to manage</string>
+    <string name="pin_error">Incorrect or mismatched PIN</string>
+    <string name="pin_accept">OK</string>
+    <string name="pin_cancel">Cancel</string>
+    <string name="nav_live_kind">Live TV</string>
+    <string name="nav_movies_kind">Movies</string>
+    <string name="nav_series_kind">Series</string>
 </resources>

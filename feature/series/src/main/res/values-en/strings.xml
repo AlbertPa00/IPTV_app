@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="series_back">Back</string>
+    <string name="series_cover_description">Poster of %1$s</string>
+    <string name="series_rating">Rating %1$s</string>
+    <string name="series_seasons">Seasons</string>
+    <string name="series_episodes">Episodes of season %1$d</string>
+    <string name="series_episode_number">Episode %1$d</string>
+    <string name="series_play_episode">Play %1$s</string>
+    <string name="series_no_episodes">No episodes available.</string>
+    <string name="series_duration">Duration: %1$s</string>
+</resources>

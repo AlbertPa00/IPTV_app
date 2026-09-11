@@ -39,8 +39,18 @@ class CastProxyServer(
     private var server: ProxyServer? = null
     private var port: Int = 0
 
+    /**
+     * Random per-session path prefix. The proxy listens on all interfaces so
+     * the Chromecast can reach it; without a secret anyone on the LAN could
+     * use the phone as an open HTTP proxy while a cast session is alive.
+     */
+    private val secret: String = java.security.SecureRandom().let { random ->
+        ByteArray(12).also(random::nextBytes)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
     fun start(): Int {
-        val s = ProxyServer(0, userAgent, referrer, advertisedHost, workDir)
+        val s = ProxyServer(0, userAgent, referrer, advertisedHost, workDir, secret)
         s.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
         server = s
         port = s.listeningPort
@@ -67,7 +77,7 @@ class CastProxyServer(
         if (advertisedHost.isBlank() || port == 0) return originalUrl
         val token = java.util.Base64.getUrlEncoder().withoutPadding()
             .encodeToString(originalUrl.toByteArray(Charsets.UTF_8))
-        return "http://$advertisedHost:$port/proxy/$token"
+        return "http://$advertisedHost:$port/$secret/proxy/$token"
     }
 
     /**
@@ -82,7 +92,7 @@ class CastProxyServer(
         if (advertisedHost.isBlank() || port == 0) return originalUrl
         val token = java.util.Base64.getUrlEncoder().withoutPadding()
             .encodeToString("$mode|$originalUrl".toByteArray(Charsets.UTF_8))
-        return "http://$advertisedHost:$port/hls/$token"
+        return "http://$advertisedHost:$port/$secret/hls/$token"
     }
 
     companion object {
@@ -131,6 +141,7 @@ private class ProxyServer(
     private val referrer: String?,
     private val advertisedHost: String,
     private val workDir: java.io.File,
+    private val secret: String,
 ) : NanoHTTPD(port) {
 
     // Streaming client: infinite read timeout so live segments and VOD
@@ -163,12 +174,19 @@ private class ProxyServer(
         }
         val uri = session.uri
         Log.d(TAG, "${session.method} $uri")
+        // Everything except CORS preflights lives under the random
+        // per-session secret; unknown paths get a flat 404.
+        val path = uri.removePrefix("/$secret")
+        if (path == uri || !path.startsWith("/")) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
+        }
+        val routed = path
         return try {
             when {
-                uri.startsWith(HLS_PREFIX) -> serveHlsPlaylist(uri.removePrefix(HLS_PREFIX))
-                uri.startsWith(SEG_PREFIX) -> serveHlsSegment(uri.removePrefix(SEG_PREFIX))
-                uri.startsWith(PROXY_PREFIX) -> {
-                    val targetUrl = decodeTarget(uri.removePrefix(PROXY_PREFIX))
+                routed.startsWith(HLS_PREFIX) -> serveHlsPlaylist(routed.removePrefix(HLS_PREFIX))
+                routed.startsWith(SEG_PREFIX) -> serveHlsSegment(routed.removePrefix(SEG_PREFIX))
+                routed.startsWith(PROXY_PREFIX) -> {
+                    val targetUrl = decodeTarget(routed.removePrefix(PROXY_PREFIX))
                     if (targetUrl == null) {
                         newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Bad proxy token")
                     } else {
@@ -205,7 +223,7 @@ private class ProxyServer(
         hls.failure?.let {
             return newFixedLengthResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "Upstream failed: $it")
         }
-        val segmentBase = "http://$advertisedHost:$listeningPort$SEG_PREFIX$token"
+        val segmentBase = "http://$advertisedHost:$listeningPort/$secret$SEG_PREFIX$token"
         val playlist = hls.playlist(segmentBase)
         return withCors(
             newFixedLengthResponse(Response.Status.OK, HLS_CONTENT_TYPE, playlist).apply {
@@ -387,7 +405,7 @@ private class ProxyServer(
      */
     private fun rewriteHlsManifest(manifest: String, manifestUrl: String): String {
         val baseUrl = manifestUrl.substringBeforeLast('/')
-        val host = "http://$advertisedHost:${this.listeningPort}"
+        val host = "http://$advertisedHost:${this.listeningPort}/$secret"
         val lines = manifest.lines().map { line ->
             val trimmed = line.trim()
             when {

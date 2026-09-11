@@ -19,6 +19,8 @@ data class CategoryEntity(
     val kind: String = Kinds.LIVE,
     val name: String,
     val sortOrder: Int = 0,
+    /** Categoría bloqueada por control parental: se oculta en toda la app. */
+    val isLocked: Boolean = false,
 )
 
 object Kinds {

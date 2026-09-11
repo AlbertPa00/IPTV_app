@@ -1,8 +1,14 @@
 package com.iptv.feature.player.ui
 
+import android.Manifest
 import android.app.Activity
+import android.app.PictureInPictureParams
+import android.os.Build
+import android.util.Rational
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -36,20 +42,25 @@ import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -61,6 +72,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,7 +92,10 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -116,15 +131,38 @@ fun PlayerScreen(
     val isInPipMode by viewModel.isInPipMode.collectAsStateWithLifecycle()
     val castVolume by viewModel.castVolume.collectAsStateWithLifecycle()
     val castMuted by viewModel.castMuted.collectAsStateWithLifecycle()
+    var tracksDialogVisible by remember { mutableStateOf(false) }
+    var tracksTick by remember { mutableStateOf(0) }
+    var resizeMode by remember { mutableStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
+    var askedMediaPerms by rememberSaveable { mutableStateOf(false) }
 
     val activity = remember(context) { context.findActivity() }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onTracksChanged(tracks: Tracks) { tracksTick++ }
         }
         player?.addListener(listener)
         onDispose { player?.removeListener(listener) }
+    }
+
+    // Android 13+: el servicio de Cast publica notificación de control y la
+    // búsqueda de dispositivos usa NEARBY_WIFI_DEVICES. Se piden en contexto,
+    // la primera vez que el botón de Cast está disponible.
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { }
+    LaunchedEffect(state.castButtonAvailable) {
+        if (state.castButtonAvailable && !askedMediaPerms && Build.VERSION.SDK_INT >= 33) {
+            askedMediaPerms = true
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.POST_NOTIFICATIONS,
+                    Manifest.permission.NEARBY_WIFI_DEVICES,
+                ),
+            )
+        }
     }
 
     DisposableEffect(fullscreen) {
@@ -161,6 +199,16 @@ fun PlayerScreen(
     // Durante Cast no tiene sentido: el PiP mostraría una ventana negra.
     LaunchedEffect(isPlaying, state.isCasting) {
         viewModel.setPipAutoEnter(isPlaying && !state.isCasting)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching {
+                activity?.setPictureInPictureParams(
+                    PictureInPictureParams.Builder()
+                        .setAspectRatio(Rational(16, 9))
+                        .setAutoEnterEnabled(isPlaying && !state.isCasting)
+                        .build(),
+                )
+            }
+        }
     }
 
     // Sincroniza el volumen del receptor al entrar en modo Cast.
@@ -198,7 +246,10 @@ fun PlayerScreen(
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
                 }
             },
-            update = { view -> view.player = player },
+            update = { view ->
+                view.player = player
+                view.resizeMode = resizeMode
+            },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -310,6 +361,44 @@ fun PlayerScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.List,
                                 contentDescription = stringResource(R.string.player_channel_list),
+                                tint = Color.White,
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    if (!state.isCasting) {
+                        IconButton(
+                            onClick = {
+                                controlsVisible = true
+                                tracksDialogVisible = true
+                            },
+                            modifier = Modifier.size(48.dp).clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.45f)),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Subtitles,
+                                contentDescription = stringResource(R.string.player_tracks),
+                                tint = Color.White,
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        IconButton(
+                            onClick = {
+                                controlsVisible = true
+                                resizeMode = when (resizeMode) {
+                                    AspectRatioFrameLayout.RESIZE_MODE_FIT ->
+                                        AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                    AspectRatioFrameLayout.RESIZE_MODE_FILL ->
+                                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                }
+                            },
+                            modifier = Modifier.size(48.dp).clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.45f)),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.AspectRatio,
+                                contentDescription = stringResource(R.string.player_aspect_ratio),
                                 tint = Color.White,
                             )
                         }
@@ -464,6 +553,12 @@ fun PlayerScreen(
                 onSelect = viewModel::playChannel,
                 onClose = { channelListVisible = false },
             )
+        }
+
+        if (tracksDialogVisible) {
+            // tracksTick fuerza recomposición cuando cambian las pistas.
+            @Suppress("UNUSED_EXPRESSION") tracksTick
+            TracksDialog(player = player, onDismiss = { tracksDialogVisible = false })
         }
 
         when {
@@ -725,6 +820,122 @@ private fun android.content.Context.findActivity(): Activity? {
         ctx = ctx.baseContext
     }
     return null
+}
+
+/**
+ * Selector de pistas de audio y subtítulos del contenido en reproducción.
+ * Sólo local: en modo Cast la selección de pistas la gestiona el receptor.
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun TracksDialog(player: Player?, onDismiss: () -> Unit) {
+    val tracks = player?.currentTracks
+    val groups = tracks?.groups.orEmpty()
+        .filter { it.type == C.TRACK_TYPE_AUDIO || it.type == C.TRACK_TYPE_TEXT }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.player_tracks), color = Color.White) },
+        text = {
+            if (groups.isEmpty()) {
+                Text(
+                    stringResource(R.string.player_tracks_empty),
+                    color = PlayerMuted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                LazyColumn {
+                    groups.forEach { group ->
+                        val isText = group.type == C.TRACK_TYPE_TEXT
+                        item {
+                            Text(
+                                text = stringResource(
+                                    if (isText) R.string.player_subtitles else R.string.player_audio
+                                ),
+                                color = PlayerCarmine,
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                            )
+                        }
+                        if (isText) {
+                            item {
+                                TrackRow(
+                                    label = stringResource(R.string.player_track_off),
+                                    selected = (0 until group.length).none { group.isTrackSelected(it) },
+                                    onClick = {
+                                        player?.trackSelectionParameters =
+                                            player.trackSelectionParameters.buildUpon()
+                                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                                                .build()
+                                    },
+                                )
+                            }
+                        }
+                        items(group.length) { index ->
+                            val format = group.getTrackFormat(index)
+                            val label = format.label
+                                ?: format.language
+                                ?: format.id
+                                ?: "${index + 1}"
+                            TrackRow(
+                                label = label,
+                                selected = group.isTrackSelected(index),
+                                enabled = group.isTrackSupported(index),
+                                onClick = {
+                                    player?.trackSelectionParameters =
+                                        player.trackSelectionParameters.buildUpon()
+                                            .setTrackTypeDisabled(group.type, false)
+                                            .setOverrideForType(
+                                                TrackSelectionOverride(
+                                                    group.mediaTrackGroup,
+                                                    index,
+                                                ),
+                                            )
+                                            .build()
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.player_close), color = PlayerCarmine)
+            }
+        },
+        containerColor = PlayerGraphite,
+    )
+}
+
+@Composable
+private fun TrackRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) Color.White else PlayerMuted,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = PlayerCarmine,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
 }
 
 @Composable

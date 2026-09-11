@@ -35,7 +35,10 @@ dependencies {
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.coil.compose)
     implementation(libs.okhttp)
-    implementation("net.sf.kxml:kxml2:2.3.0")
+    // En el dispositivo XmlPullParserFactory resuelve al kxml2 interno del
+    // framework; el jar de kxml2 embebe org.xmlpull.v1.* y rompe R8, así que
+    // sólo se usa como implementación para los tests JVM.
+    testImplementation("net.sf.kxml:kxml2:2.3.0")
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

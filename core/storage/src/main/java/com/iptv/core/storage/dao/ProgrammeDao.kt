@@ -71,6 +71,8 @@ interface ProgrammeDao {
             ORDER BY cp.startUtc DESC LIMIT 1
         )
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE'
+          AND (c.categoryId IS NULL OR c.categoryId NOT IN
+              (SELECT id FROM categories WHERE isLocked = 1))
         ORDER BY c.sortOrder, c.name
         """
     )

@@ -231,6 +231,10 @@ class PlayerViewModel @Inject constructor(
             _uiState.update { it.copy(errorRes = R.string.player_error_channel_missing) }
             return
         }
+        if (channelDao.isInLockedCategory(channel.id)) {
+            _uiState.update { it.copy(errorRes = R.string.player_error_locked) }
+            return
+        }
         if (channel.kind == Kinds.LIVE) {
             val liveChannels = channelDao.liveBySource(channel.sourceId)
             _channelList.value = liveChannels
@@ -312,7 +316,8 @@ class PlayerViewModel @Inject constructor(
     }
 
     private suspend fun switchChannel(id: Long) {
-        val channel = channelDao.findById(id) ?: return
+        val channel = channelDao.findById(id)?.takeUnless { channelDao.isInLockedCategory(id) }
+            ?: return
         channelId = id
         transcodeEscalated = false
         activeCastHlsMode = null

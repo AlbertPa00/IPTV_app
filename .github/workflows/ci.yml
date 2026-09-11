@@ -19,3 +19,9 @@ jobs:
         run: ./gradlew :app:assembleDebug --stacktrace
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
+      - name: Lint
+        run: ./gradlew :app:lintDebug --stacktrace
+      # Sin keystore.properties en CI la release sale sin firmar; el build
+      # sigue validando R8/minify/shrinkResources, que es lo que se rompe.
+      - name: Release bundle (R8 smoke test)
+        run: ./gradlew :app:bundleRelease --stacktrace

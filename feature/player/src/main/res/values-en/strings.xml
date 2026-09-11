@@ -34,4 +34,12 @@
     <string name="player_cast_mute">Mute TV</string>
     <string name="player_cast_unmute">Unmute</string>
     <string name="player_cast_hint">You can keep using your phone — playback continues on the TV</string>
+    <string name="player_tracks">Tracks</string>
+    <string name="player_tracks_empty">This content exposes no additional tracks</string>
+    <string name="player_audio">Audio</string>
+    <string name="player_subtitles">Subtitles</string>
+    <string name="player_track_off">Disable</string>
+    <string name="player_aspect_ratio">Aspect ratio</string>
+    <string name="player_close">Close</string>
+    <string name="player_error_locked">Content blocked by parental control</string>
 </resources>

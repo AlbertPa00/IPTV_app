@@ -53,4 +53,34 @@
     <string name="sources_delete_no">Cancelar</string>
     <string name="sources_last_sync">Última actualización: %1$s</string>
     <string name="sources_last_sync_never">Sin sincronizar</string>
+
+    <!-- Ajustes -->
+    <string name="settings_options_title">Opciones</string>
+    <string name="settings_auto_refresh">Actualización automática</string>
+    <string name="settings_auto_refresh_sub">Actualiza la lista y la guía una vez al día en segundo plano</string>
+    <string name="settings_wifi_only">Sólo con Wi-Fi</string>
+    <string name="settings_wifi_only_sub">No descargar catálogo ni guía usando datos móviles</string>
+    <string name="settings_parental_title">Control parental</string>
+    <string name="settings_parental">Bloqueo con PIN</string>
+    <string name="settings_parental_on_sub">Las categorías bloqueadas están ocultas en toda la app</string>
+    <string name="settings_parental_off_sub">Protege con un PIN las categorías que elijas</string>
+    <string name="settings_parental_manage">Gestionar categorías bloqueadas</string>
+    <string name="settings_locked_categories">Categorías bloqueadas</string>
+    <string name="settings_about_title">Acerca de</string>
+    <string name="settings_version">Versión</string>
+    <string name="settings_licenses">Licencias de código abierto</string>
+    <string name="settings_licenses_body">Esta app usa software de código abierto:\n\n• AndroidX / Jetpack Compose — Apache-2.0\n• Media3 (ExoPlayer) — Apache-2.0\n• Google Cast SDK — Google Cast SDK Terms\n• Hilt — Apache-2.0\n• Room — Apache-2.0\n• OkHttp — Apache-2.0\n• Coil — Apache-2.0\n• kotlinx.coroutines / kotlinx.serialization — Apache-2.0\n• NanoHTTPD — BSD-3-Clause\n• FFmpegKit (https) — LGPL-3.0 / Apache-2.0\n• kxml2 — MIT</string>
+    <string name="settings_privacy">Política de privacidad</string>
+    <string name="settings_privacy_body">Esta aplicación es únicamente un reproductor: no incluye, aloja ni distribuye canales ni contenido.\n\nTus datos se quedan en el dispositivo. Las listas, credenciales de acceso, favoritos e historial se almacenan localmente en tu teléfono y no se envían a ningún servidor nuestro ni de terceros.\n\nLas contraseñas de cuentas se guardan cifradas con el almacén de claves de Android (AES-GCM) y nunca aparecen en registros.\n\nLa app se conecta únicamente a los servidores de tu proveedor de IPTV para descargar la lista, la guía de programación y reproducir el contenido que tú hayas configurado.\n\nNo hay anuncios, ni rastreadores, ni analítica de terceros.\n\nPuedes borrar todos tus datos en cualquier momento desde Ajustes del sistema → Aplicaciones → Borrar datos.</string>
+    <string name="pin_field">PIN (4 dígitos)</string>
+    <string name="pin_create_title">Crear PIN parental</string>
+    <string name="pin_confirm_title">Repite el PIN</string>
+    <string name="pin_unlock_disable_title">Introduce el PIN para desactivar</string>
+    <string name="pin_unlock_manage_title">Introduce el PIN para gestionar</string>
+    <string name="pin_error">PIN incorrecto o no coincide</string>
+    <string name="pin_accept">Aceptar</string>
+    <string name="pin_cancel">Cancelar</string>
+    <string name="nav_live_kind">TV en directo</string>
+    <string name="nav_movies_kind">Películas</string>
+    <string name="nav_series_kind">Series</string>
 </resources>

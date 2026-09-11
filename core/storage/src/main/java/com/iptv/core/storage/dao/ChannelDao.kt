@@ -8,6 +8,11 @@ import androidx.room.Query
 import com.iptv.core.storage.entity.ChannelEntity
 import kotlinx.coroutines.flow.Flow
 
+/** Excluye canales de categorías bloqueadas por control parental. */
+private const val UNLOCKED_ONLY =
+    "(categoryId IS NULL OR categoryId NOT IN " +
+        "(SELECT id FROM categories WHERE isLocked = 1))"
+
 @Dao
 interface ChannelDao {
 
@@ -23,24 +28,29 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE id = :id")
     suspend fun findById(id: Long): ChannelEntity?
 
+    /** true si el canal pertenece a una categoría bloqueada por control parental. */
+    @Query("SELECT EXISTS(SELECT 1 FROM channels c INNER JOIN categories cat ON cat.id = c.categoryId WHERE c.id = :channelId AND cat.isLocked = 1)")
+    suspend fun isInLockedCategory(channelId: Long): Boolean
+
     // Las filas "episode:*" son sintéticas (se crean al reproducir un
     // episodio para poder reanudarlo); nunca deben aparecer en el catálogo.
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name")
+    // Los canales de categorías bloqueadas tampoco aparecen nunca.
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     fun pagingBySource(sourceId: Long, kind: String): PagingSource<Int, ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND categoryId = :categoryId AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND categoryId = :categoryId AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     fun pagingByCategory(sourceId: Long, categoryId: Long): PagingSource<Int, ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND nameNorm LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY sortOrder, name")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND nameNorm LIKE '%' || :query || '%' ESCAPE '\\' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     fun pagingBySearch(sourceId: Long, kind: String, query: String): PagingSource<Int, ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isFavorite = 1 AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isFavorite = 1 AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     fun pagingFavorites(sourceId: Long, kind: String): PagingSource<Int, ChannelEntity>
 
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND categoryId IS NULL AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name")
     fun pagingUncategorized(sourceId: Long, kind: String): PagingSource<Int, ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isFavorite = 1 AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name LIMIT :limit")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isFavorite = 1 AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
     fun observeTopFavorites(sourceId: Long, kind: String, limit: Int): Flow<List<ChannelEntity>>
 
     @Query("SELECT * FROM channels WHERE categoryId = :categoryId AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name LIMIT :limit")
@@ -49,10 +59,10 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND categoryId IS NULL AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name LIMIT :limit")
     fun observeUncategorized(sourceId: Long, kind: String, limit: Int): Flow<List<ChannelEntity>>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name LIMIT :limit")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
     fun observeTopByKind(sourceId: Long, kind: String, limit: Int): Flow<List<ChannelEntity>>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND nameNorm LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY sortOrder, name LIMIT :limit")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND nameNorm LIKE '%' || :query || '%' ESCAPE '\\' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
     fun searchTop(sourceId: Long, kind: String, query: String, limit: Int): Flow<List<ChannelEntity>>
 
     @Query("UPDATE channels SET isFavorite = :favorite WHERE id = :id")
@@ -70,12 +80,12 @@ interface ChannelDao {
     @Query("SELECT COUNT(*) FROM channels WHERE sourceId = :sourceId")
     suspend fun countBySource(sourceId: Long): Int
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' ORDER BY sortOrder, name")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     suspend fun liveBySource(sourceId: Long): List<ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = 'SERIES' AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = 'SERIES' AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     suspend fun seriesBySource(sourceId: Long): List<ChannelEntity>
 
-    @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = :kind ORDER BY sortOrder, name")
+    @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = :kind AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     suspend fun channelIds(sourceId: Long, kind: String): List<Long>
 }

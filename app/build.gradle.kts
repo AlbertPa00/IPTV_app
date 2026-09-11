@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -7,8 +9,8 @@ plugins {
 }
 
 val signingPropsFile = rootProject.file("keystore.properties")
-val signingProps = java.util.Properties().apply {
-    if (signingPropsFile.exists()) signingPropsFile.inputStream().use(::load)
+val signingProps = Properties().apply {
+    if (signingPropsFile.exists()) signingPropsFile.inputStream().use { load(it) }
 }
 
 android {
@@ -89,6 +91,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.hilt.navigation.compose)
 
+    implementation(libs.androidx.work)
+    implementation(libs.androidx.hilt.work)
+
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+    ksp(libs.androidx.hilt.compiler)
 }

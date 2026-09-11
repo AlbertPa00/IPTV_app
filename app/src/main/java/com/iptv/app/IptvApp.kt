@@ -41,7 +41,7 @@ import com.iptv.feature.epg.ui.GuideScreen
 import com.iptv.feature.player.ui.PlayerScreen
 import com.iptv.feature.series.ui.SeriesDetailsScreen
 import com.iptv.feature.source.ui.AddSourceScreen
-import com.iptv.feature.source.ui.SourcesScreen
+import com.iptv.feature.source.ui.SettingsScreen
 import com.iptv.feature.source.ui.WelcomeScreen
 
 private object Routes {
@@ -151,7 +151,10 @@ private fun AppNavigation(navController: NavHostController, startDestination: St
                 GuideScreen(onChannelClick = { navController.navigate(Routes.player(it)) })
             }
             composable(Routes.Settings) {
-                SourcesScreen(onAddSource = { navController.navigate(Routes.AddSource) })
+                SettingsScreen(
+                    appVersion = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    onAddSource = { navController.navigate(Routes.AddSource) },
+                )
             }
             composable(
                 route = Routes.Player,

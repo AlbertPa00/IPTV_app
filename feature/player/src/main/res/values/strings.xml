@@ -34,4 +34,12 @@
     <string name="player_cast_mute">Silenciar televisor</string>
     <string name="player_cast_unmute">Activar sonido</string>
     <string name="player_cast_hint">Puedes usar el móvil con normalidad: la emisión sigue en la TV</string>
+    <string name="player_tracks">Pistas</string>
+    <string name="player_tracks_empty">Este contenido no expone pistas adicionales</string>
+    <string name="player_audio">Audio</string>
+    <string name="player_subtitles">Subtítulos</string>
+    <string name="player_track_off">Desactivar</string>
+    <string name="player_aspect_ratio">Relación de aspecto</string>
+    <string name="player_close">Cerrar</string>
+    <string name="player_error_locked">Contenido bloqueado por el control parental</string>
 </resources>
