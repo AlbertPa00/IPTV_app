@@ -1,0 +1,80 @@
+# Built application files
+*.apk
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+
+# Gradle files
+.gradle/
+build/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Kotlin session data
+.kotlin/
+
+# Proguard
+proguard/
+
+# Log files
+*.log
+
+# Android Studio
+*.iml
+.idea/
+.navigation/
+captures/
+.cxx/
+.externalNativeBuild/
+vcs.xml
+
+# Keystore files (never commit signing keys)
+*.jks
+*.keystore
+*.p12
+keystore.properties
+
+# Google Services (uncomment if you add Firebase)
+# google-services.json
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# Lint intermediates
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
+
+# Android Profiling
+*.hprof
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------------------------------
+# Device debug artifacts at repo root (pulled data, UI dumps, screenshots).
+# playlist.m3u and iptv_pull.db contain live Xtream credentials — do not commit.
+# ---------------------------------------------------------------------------
+/playlist.m3u
+/iptv_pull.db
+/vod_streams.json
+/seg.bin
+/ui*.xml
+/screen.png
+/s*.png

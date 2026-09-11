@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="player_back">Back</string>
+    <string name="player_fullscreen">Fullscreen</string>
+    <string name="player_exit_fullscreen">Exit fullscreen</string>
+    <string name="player_play">Play</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_seek_back">Rewind 10 seconds</string>
+    <string name="player_seek_forward">Forward 10 seconds</string>
+    <string name="player_previous_channel">Previous channel</string>
+    <string name="player_next_channel">Next channel</string>
+    <string name="player_channel_list">Channel list</string>
+    <string name="player_pip">Floating window</string>
+    <string name="player_live">LIVE</string>
+    <string name="player_on_demand">ON DEMAND</string>
+    <string name="player_playback_interrupted">Playback interrupted</string>
+    <string name="player_retry">Retry</string>
+    <string name="player_cast">Cast to Chromecast</string>
+    <string name="player_cast_device">Chromecast</string>
+    <string name="player_casting_to">Playing on %1$s</string>
+    <string name="player_return_to_mobile">Return to mobile</string>
+    <string name="player_error_network">No connection or the server is not responding</string>
+    <string name="player_error_http">The channel is unavailable right now (busy server or dead link)</string>
+    <string name="player_error_format">The stream format is not supported</string>
+    <string name="player_error_cast_format">Chromecast could not play this direct stream format</string>
+    <string name="player_error_codec">Your phone does not support this channel\'s codec</string>
+    <string name="player_error_generic">The channel could not be played</string>
+    <string name="player_error_channel_missing">This channel no longer exists in your list</string>
+    <string name="cast_service_notification_title">Casting to Chromecast</string>
+    <string name="cast_service_channel_name">Chromecast</string>
+    <string name="cast_service_stop">Stop casting</string>
+    <string name="cast_service_open">Open player</string>
+    <string name="player_cast_volume">TV volume</string>
+    <string name="player_cast_mute">Mute TV</string>
+    <string name="player_cast_unmute">Unmute</string>
+    <string name="player_cast_hint">You can keep using your phone — playback continues on the TV</string>
+</resources>

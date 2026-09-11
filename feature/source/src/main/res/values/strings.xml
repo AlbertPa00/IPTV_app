@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Onboarding -->
+    <string name="welcome_title">Tu IPTV, sencillo</string>
+    <string name="welcome_body">Añade la lista de tu proveedor o entra con tu usuario y contraseña y empieza a zapear en segundos.</string>
+    <string name="welcome_legal">Esta aplicación no incluye listas ni canales: usa los que ya tienes de tu proveedor.</string>
+    <string name="welcome_start">Empezar</string>
+
+    <!-- Alta de fuente -->
+    <string name="source_add_title">Añadir fuente</string>
+    <string name="source_back">Volver</string>
+    <string name="source_tab_m3u">Lista (M3U)</string>
+    <string name="source_tab_xtream">Cuenta</string>
+    <string name="source_field_name">Nombre (opcional)</string>
+    <string name="source_field_url">URL de la lista</string>
+    <string name="source_field_server">Servidor (ej. http://mihost.tv:8080)</string>
+    <string name="source_field_username">Usuario</string>
+    <string name="source_field_password">Contraseña</string>
+    <string name="source_cd_toggle_password">Mostrar u ocultar contraseña</string>
+    <string name="source_action_add_m3u">Añadir lista</string>
+    <string name="source_or_file">O selecciona un archivo M3U/M3U8 del teléfono</string>
+    <string name="source_action_select_file">Seleccionar archivo</string>
+    <string name="source_action_login">Entrar</string>
+    <string name="source_progress_connecting">Conectando…</string>
+    <string name="source_progress_authenticating">Verificando tu cuenta…</string>
+    <string name="source_progress_fetching">Descargando el catálogo…</string>
+    <string name="source_progress_importing">Importando… %1$d canales</string>
+    <string name="source_error_url_required">Introduce la URL de la lista</string>
+    <string name="source_error_fields_required">Completa servidor, usuario y contraseña</string>
+    <string name="source_error_invalid_url">La URL o el servidor no es válido</string>
+    <string name="source_error_network">No se pudo conectar. Revisa tu conexión o los datos introducidos</string>
+    <string name="source_error_credentials">Usuario o contraseña incorrectos</string>
+    <string name="source_error_inactive">Tu cuenta está caducada o suspendida</string>
+    <string name="source_error_empty">La lista está vacía o su formato no es válido</string>
+    <string name="source_error_file_access">No se pudo leer el archivo seleccionado</string>
+    <string name="source_error_not_found">No se encontró la lista (¿enlace caducado?)</string>
+    <string name="source_error_unknown">Error inesperado. Inténtalo de nuevo</string>
+
+    <!-- Gestión de fuentes -->
+    <string name="sources_title">Fuentes</string>
+    <string name="sources_add">Añadir fuente</string>
+    <string name="sources_empty">Aún no hay fuentes. Añade tu lista o tu cuenta para empezar.</string>
+    <string name="sources_type_m3u">Lista M3U</string>
+    <string name="sources_type_xtream">Cuenta Xtream</string>
+    <string name="sources_channels">%1$d canales</string>
+    <string name="sources_active">Fuente activa</string>
+    <string name="sources_inactive">Fuente inactiva</string>
+    <string name="sources_refresh">Actualizar</string>
+    <string name="sources_delete">Eliminar</string>
+    <string name="sources_delete_title">¿Eliminar fuente?</string>
+    <string name="sources_delete_confirm">Se eliminarán «%1$s» y todos sus canales. Esta acción no se puede deshacer.</string>
+    <string name="sources_delete_yes">Eliminar</string>
+    <string name="sources_delete_no">Cancelar</string>
+    <string name="sources_last_sync">Última actualización: %1$s</string>
+    <string name="sources_last_sync_never">Sin sincronizar</string>
+</resources>

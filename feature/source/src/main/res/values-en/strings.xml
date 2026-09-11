@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Onboarding -->
+    <string name="welcome_title">Your IPTV, made simple</string>
+    <string name="welcome_body">Add your provider playlist or sign in with your username and password and start zapping in seconds.</string>
+    <string name="welcome_legal">This app does not include playlists or channels: use the ones you already have from your provider.</string>
+    <string name="welcome_start">Get started</string>
+
+    <!-- Add source -->
+    <string name="source_add_title">Add source</string>
+    <string name="source_back">Back</string>
+    <string name="source_tab_m3u">Playlist (M3U)</string>
+    <string name="source_tab_xtream">Account</string>
+    <string name="source_field_name">Name (optional)</string>
+    <string name="source_field_url">Playlist URL</string>
+    <string name="source_field_server">Server (e.g. http://myhost.tv:8080)</string>
+    <string name="source_field_username">Username</string>
+    <string name="source_field_password">Password</string>
+    <string name="source_cd_toggle_password">Show or hide password</string>
+    <string name="source_action_add_m3u">Add playlist</string>
+    <string name="source_or_file">Or select an M3U/M3U8 file from your phone</string>
+    <string name="source_action_select_file">Select file</string>
+    <string name="source_action_login">Sign in</string>
+    <string name="source_progress_connecting">Connecting…</string>
+    <string name="source_progress_authenticating">Verifying your account…</string>
+    <string name="source_progress_fetching">Downloading the catalog…</string>
+    <string name="source_progress_importing">Importing… %1$d channels</string>
+    <string name="source_error_url_required">Enter the playlist URL</string>
+    <string name="source_error_fields_required">Fill in server, username and password</string>
+    <string name="source_error_invalid_url">The URL or server is not valid</string>
+    <string name="source_error_network">Could not connect. Check your connection or the entered data</string>
+    <string name="source_error_credentials">Wrong username or password</string>
+    <string name="source_error_inactive">Your account has expired or is suspended</string>
+    <string name="source_error_empty">The playlist is empty or its format is not valid</string>
+    <string name="source_error_file_access">The selected file could not be read</string>
+    <string name="source_error_not_found">Playlist not found (expired link?)</string>
+    <string name="source_error_unknown">Unexpected error. Please try again</string>
+
+    <!-- Source management -->
+    <string name="sources_title">Sources</string>
+    <string name="sources_add">Add source</string>
+    <string name="sources_empty">No sources yet. Add your playlist or account to get started.</string>
+    <string name="sources_type_m3u">M3U playlist</string>
+    <string name="sources_type_xtream">Xtream account</string>
+    <string name="sources_channels">%1$d channels</string>
+    <string name="sources_active">Active source</string>
+    <string name="sources_inactive">Inactive source</string>
+    <string name="sources_refresh">Refresh</string>
+    <string name="sources_delete">Delete</string>
+    <string name="sources_delete_title">Delete source?</string>
+    <string name="sources_delete_confirm">"%1$s" and all its channels will be deleted. This action cannot be undone.</string>
+    <string name="sources_delete_yes">Delete</string>
+    <string name="sources_delete_no">Cancel</string>
+    <string name="sources_last_sync">Last updated: %1$s</string>
+    <string name="sources_last_sync_never">Never synced</string>
+</resources>

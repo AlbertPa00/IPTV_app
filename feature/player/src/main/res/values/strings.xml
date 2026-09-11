@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="player_back">Volver</string>
+    <string name="player_fullscreen">Pantalla completa</string>
+    <string name="player_exit_fullscreen">Salir de pantalla completa</string>
+    <string name="player_play">Reproducir</string>
+    <string name="player_pause">Pausar</string>
+    <string name="player_seek_back">Retroceder 10 segundos</string>
+    <string name="player_seek_forward">Avanzar 10 segundos</string>
+    <string name="player_previous_channel">Canal anterior</string>
+    <string name="player_next_channel">Canal siguiente</string>
+    <string name="player_channel_list">Lista de canales</string>
+    <string name="player_pip">Ventana flotante</string>
+    <string name="player_live">EN DIRECTO</string>
+    <string name="player_on_demand">BAJO DEMANDA</string>
+    <string name="player_playback_interrupted">Reproducción interrumpida</string>
+    <string name="player_retry">Reintentar</string>
+    <string name="player_cast">Enviar a Chromecast</string>
+    <string name="player_cast_device">Chromecast</string>
+    <string name="player_casting_to">Reproduciendo en %1$s</string>
+    <string name="player_return_to_mobile">Volver a móvil</string>
+    <string name="player_error_network">No hay conexión o el servidor no responde</string>
+    <string name="player_error_http">El canal no está disponible ahora (servidor ocupado o enlace caído)</string>
+    <string name="player_error_format">El formato del stream no es compatible</string>
+    <string name="player_error_cast_format">Chromecast no pudo reproducir este formato directo</string>
+    <string name="player_error_codec">Tu teléfono no admite el códec de este canal</string>
+    <string name="player_error_generic">No se pudo reproducir el canal</string>
+    <string name="player_error_channel_missing">El canal ya no existe en tu lista</string>
+    <string name="cast_service_notification_title">Emitiendo a Chromecast</string>
+    <string name="cast_service_channel_name">Chromecast</string>
+    <string name="cast_service_stop">Detener emisión</string>
+    <string name="cast_service_open">Abrir reproductor</string>
+    <string name="player_cast_volume">Volumen del televisor</string>
+    <string name="player_cast_mute">Silenciar televisor</string>
+    <string name="player_cast_unmute">Activar sonido</string>
+    <string name="player_cast_hint">Puedes usar el móvil con normalidad: la emisión sigue en la TV</string>
+</resources>

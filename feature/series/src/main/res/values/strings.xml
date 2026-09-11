@@ -1,0 +1,11 @@
+<resources>
+    <string name="series_back">Volver</string>
+    <string name="series_cover_description">Póster de %1$s</string>
+    <string name="series_rating">Valoración %1$s</string>
+    <string name="series_seasons">Temporadas</string>
+    <string name="series_episodes">Episodios de la temporada %1$d</string>
+    <string name="series_episode_number">Episodio %1$d</string>
+    <string name="series_play_episode">Reproducir %1$s</string>
+    <string name="series_no_episodes">No hay episodios disponibles.</string>
+    <string name="series_duration">Duración: %1$s</string>
+</resources>

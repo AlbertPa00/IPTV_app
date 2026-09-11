@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="epg_title">Guía de programación</string>
+    <string name="epg_subtitle">Ahora y a continuación</string>
+    <string name="epg_sync">Sincronizar</string>
+    <string name="epg_retry">Reintentar</string>
+    <string name="epg_syncing">Importando guía… %1$d programas</string>
+    <string name="epg_empty">Todavía no hay datos de guía. Sincroniza la EPG de tu proveedor.</string>
+    <string name="epg_no_current">Sin información actual</string>
+    <string name="epg_next">Después · %1$s  %2$s</string>
+    <string name="epg_error_no_source">No hay una fuente activa.</string>
+    <string name="epg_error_no_url">La fuente no proporciona una URL de guía.</string>
+    <string name="epg_error_network">No se pudo descargar la guía. Comprueba la conexión.</string>
+    <string name="epg_error_xml">La guía recibida no es un XMLTV válido.</string>
+    <string name="epg_error_empty">La guía no contiene programas asociados a tus canales.</string>
+</resources>

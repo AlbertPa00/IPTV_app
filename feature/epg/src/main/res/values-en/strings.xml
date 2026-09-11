@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="epg_title">Programme guide</string>
+    <string name="epg_subtitle">Now and next</string>
+    <string name="epg_sync">Sync</string>
+    <string name="epg_retry">Retry</string>
+    <string name="epg_syncing">Importing guide… %1$d programmes</string>
+    <string name="epg_empty">There is no guide data yet. Sync your provider EPG.</string>
+    <string name="epg_no_current">No current programme information</string>
+    <string name="epg_next">Next · %1$s  %2$s</string>
+    <string name="epg_error_no_source">There is no active source.</string>
+    <string name="epg_error_no_url">This source does not provide a guide URL.</string>
+    <string name="epg_error_network">The guide could not be downloaded. Check your connection.</string>
+    <string name="epg_error_xml">The downloaded guide is not valid XMLTV.</string>
+    <string name="epg_error_empty">The guide has no programmes matching your channels.</string>
+</resources>
