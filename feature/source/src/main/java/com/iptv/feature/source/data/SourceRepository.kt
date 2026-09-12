@@ -24,6 +24,7 @@ import com.iptv.feature.source.data.m3u.M3uContentClassifier
 import com.iptv.feature.source.data.m3u.M3uParser
 import com.iptv.feature.source.data.m3u.ParsedChannel
 import com.iptv.feature.source.data.xtream.HttpCodeException
+import com.iptv.feature.source.data.xtream.XtCategory
 import com.iptv.feature.source.data.xtream.XtSeries
 import com.iptv.feature.source.data.xtream.XtStream
 import com.iptv.feature.source.data.xtream.XtreamClient
@@ -33,6 +34,8 @@ import com.iptv.feature.source.domain.SourceSyncPhase
 import com.iptv.feature.source.domain.SyncStep
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -275,40 +278,64 @@ class SourceRepository @Inject constructor(
 
     private fun syncXtreamCatalog(sourceId: Long, server: ParsedServer, username: String, password: String): Flow<SourceSyncPhase> = flow {
         emit(SourceSyncPhase.Progress(SyncStep.FETCHING, 0))
-        val liveCategories = xtreamClient.liveCategories(server.scheme, server.host, server.port, username, password)
-        val liveStreams = xtreamClient.liveStreams(server.scheme, server.host, server.port, username, password)
-        emit(SourceSyncPhase.Progress(SyncStep.FETCHING, liveStreams.size))
-
-        val vodCategories = optionalCatalog {
-            xtreamClient.vodCategories(server.scheme, server.host, server.port, username, password)
+        // Las 6 peticiones son independientes: en paralelo el alta de una cuenta
+        // grande tarda lo que tarda la respuesta más lenta, no la suma de todas.
+        val catalog = coroutineScope {
+            val liveCategories = async {
+                xtreamClient.liveCategories(server.scheme, server.host, server.port, username, password)
+            }
+            val liveStreams = async {
+                xtreamClient.liveStreams(server.scheme, server.host, server.port, username, password)
+            }
+            val vodCategories = async {
+                optionalCatalog { xtreamClient.vodCategories(server.scheme, server.host, server.port, username, password) }
+            }
+            val vodStreams = async {
+                optionalCatalog { xtreamClient.vodStreams(server.scheme, server.host, server.port, username, password) }
+            }
+            val seriesCategories = async {
+                optionalCatalog { xtreamClient.seriesCategories(server.scheme, server.host, server.port, username, password) }
+            }
+            val series = async {
+                optionalCatalog { xtreamClient.series(server.scheme, server.host, server.port, username, password) }
+            }
+            XtreamCatalog(
+                liveCategories = liveCategories.await(),
+                liveStreams = liveStreams.await(),
+                vodCategories = vodCategories.await(),
+                vodStreams = vodStreams.await(),
+                seriesCategories = seriesCategories.await(),
+                series = series.await(),
+            )
         }
-        val vodStreams = optionalCatalog {
-            xtreamClient.vodStreams(server.scheme, server.host, server.port, username, password)
-        }
-        emit(SourceSyncPhase.Progress(SyncStep.FETCHING, liveStreams.size + vodStreams.size))
-
-        val seriesCategories = optionalCatalog {
-            xtreamClient.seriesCategories(server.scheme, server.host, server.port, username, password)
-        }
-        val series = optionalCatalog {
-            xtreamClient.series(server.scheme, server.host, server.port, username, password)
-        }
-        emit(SourceSyncPhase.Progress(SyncStep.FETCHING, liveStreams.size + vodStreams.size + series.size))
+        emit(SourceSyncPhase.Progress(
+            SyncStep.FETCHING,
+            catalog.liveStreams.size + catalog.vodStreams.size + catalog.series.size,
+        ))
 
         val categories = buildList {
-            addAll(liveCategories.toEntities(sourceId, Kinds.LIVE))
-            addAll(vodCategories.toEntities(sourceId, Kinds.VOD))
-            addAll(seriesCategories.toEntities(sourceId, Kinds.SERIES))
+            addAll(catalog.liveCategories.toEntities(sourceId, Kinds.LIVE))
+            addAll(catalog.vodCategories.toEntities(sourceId, Kinds.VOD))
+            addAll(catalog.seriesCategories.toEntities(sourceId, Kinds.SERIES))
         }
         val channels = buildList {
-            addAll(liveStreams.map { it.toLiveEntity(sourceId, server, username, password) })
-            addAll(vodStreams.map { it.toVodEntity(sourceId, server, username, password) })
-            addAll(series.map { it.toSeriesEntity(sourceId) })
+            addAll(catalog.liveStreams.map { it.toLiveEntity(sourceId, server, username, password) })
+            addAll(catalog.vodStreams.map { it.toVodEntity(sourceId, server, username, password) })
+            addAll(catalog.series.map { it.toSeriesEntity(sourceId) })
         }
         replaceCatalog(sourceId, categories, channels, userAgent = null)
         ensureActiveSource(sourceId)
         emit(SourceSyncPhase.Done(sourceId))
     }.flowOn(dispatchers.io)
+
+    private data class XtreamCatalog(
+        val liveCategories: List<XtCategory>,
+        val liveStreams: List<XtStream>,
+        val vodCategories: List<XtCategory>,
+        val vodStreams: List<XtStream>,
+        val seriesCategories: List<XtCategory>,
+        val series: List<XtSeries>,
+    )
 
     private suspend fun <T> optionalCatalog(block: suspend () -> List<T>): List<T> = try {
         block()
@@ -322,7 +349,7 @@ class SourceRepository @Inject constructor(
         emptyList()
     }
 
-    private fun List<com.iptv.feature.source.data.xtream.XtCategory>.toEntities(
+    private fun List<XtCategory>.toEntities(
         sourceId: Long,
         kind: String,
     ): List<CategoryEntity> = distinctBy { it.category_id }.mapIndexed { index, category ->
