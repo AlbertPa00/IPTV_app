@@ -78,3 +78,5 @@ Thumbs.db
 /ui*.xml
 /screen.png
 /s*.png
+/*_shot.png
+/*_small.png
