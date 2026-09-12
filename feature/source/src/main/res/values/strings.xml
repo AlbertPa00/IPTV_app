@@ -91,4 +91,10 @@
     <string name="nav_live_kind">TV en directo</string>
     <string name="nav_movies_kind">Películas</string>
     <string name="nav_series_kind">Series</string>
+    <string name="source_section_vod">películas</string>
+    <string name="source_section_series">series</string>
+    <string name="sources_sync_partial">Actualización parcial: no se pudieron descargar %1$s. El servidor no respondió; inténtalo de nuevo.</string>
+    <string name="sources_refresh_failed">No se pudo actualizar la fuente.</string>
+    <string name="source_sync_partial">La fuente se añadió, pero no se pudieron descargar %1$s: el servidor no respondió. Podrás reintentarlo desde Ajustes → Actualizar.</string>
+    <string name="source_continue">Continuar</string>
 </resources>

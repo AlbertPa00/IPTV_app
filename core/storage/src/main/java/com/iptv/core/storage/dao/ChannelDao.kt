@@ -74,6 +74,9 @@ interface ChannelDao {
     @Query("DELETE FROM channels WHERE sourceId = :sourceId")
     suspend fun deleteBySource(sourceId: Long)
 
+    @Query("DELETE FROM channels WHERE sourceId = :sourceId AND kind NOT IN (:keptKinds)")
+    suspend fun deleteBySourceExceptKinds(sourceId: Long, keptKinds: Collection<String>)
+
     @Query("SELECT COUNT(*) FROM channels WHERE sourceId = :sourceId")
     fun observeCountBySource(sourceId: Long): Flow<Int>
 

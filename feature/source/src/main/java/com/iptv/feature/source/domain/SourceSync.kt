@@ -20,6 +20,11 @@ enum class SyncStep { CONNECTING, AUTHENTICATING, FETCHING, IMPORTING }
 /** Fases emitidas durante la alta o actualización de una fuente. */
 sealed interface SourceSyncPhase {
     data class Progress(val step: SyncStep, val count: Int) : SourceSyncPhase
-    data class Done(val sourceId: Long) : SourceSyncPhase
+
+    /**
+     * [missingSections]: secciones que el servidor no devolvió tras reintentar
+     * ("vod", "series"). Vacío = sincronización completa.
+     */
+    data class Done(val sourceId: Long, val missingSections: Set<String> = emptySet()) : SourceSyncPhase
     data class Failed(val error: SourceError) : SourceSyncPhase
 }

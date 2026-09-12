@@ -38,6 +38,8 @@ class AddSourceViewModel @Inject constructor(
         val count: Int = 0,
         @StringRes val errorRes: Int? = null,
         val completedSourceId: Long? = null,
+        val partialDoneSourceId: Long? = null,
+        val partialSections: List<Int> = emptyList(),
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -109,13 +111,29 @@ class AddSourceViewModel @Inject constructor(
                         _uiState.update { it.copy(step = phase.step, count = phase.count) }
 
                     is SourceSyncPhase.Done ->
-                        _uiState.update { it.copy(busy = false, step = null, completedSourceId = phase.sourceId) }
+                        if (phase.missingSections.isEmpty()) {
+                            _uiState.update { it.copy(busy = false, step = null, completedSourceId = phase.sourceId) }
+                        } else {
+                            _uiState.update {
+                                it.copy(
+                                    busy = false,
+                                    step = null,
+                                    partialDoneSourceId = phase.sourceId,
+                                    partialSections = phase.missingSections.map(::sectionLabelRes),
+                                )
+                            }
+                        }
 
                     is SourceSyncPhase.Failed ->
                         _uiState.update { it.copy(busy = false, step = null, errorRes = phase.error.toRes()) }
                 }
             }
         }
+    }
+
+    fun confirmDone() {
+        val id = _uiState.value.partialDoneSourceId ?: return
+        _uiState.update { it.copy(partialDoneSourceId = null, completedSourceId = id) }
     }
 
     @StringRes

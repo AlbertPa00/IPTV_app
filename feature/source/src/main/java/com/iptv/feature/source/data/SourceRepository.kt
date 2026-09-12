@@ -36,6 +36,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -280,6 +281,8 @@ class SourceRepository @Inject constructor(
         emit(SourceSyncPhase.Progress(SyncStep.FETCHING, 0))
         // Las 6 peticiones son independientes: en paralelo el alta de una cuenta
         // grande tarda lo que tarda la respuesta más lenta, no la suma de todas.
+        // Los catálogos opcionales (VOD/series) devuelven null si fallan tras
+        // reintentar, para informar al usuario en lugar de ocultarlos.
         val catalog = coroutineScope {
             val liveCategories = async {
                 xtreamClient.liveCategories(server.scheme, server.host, server.port, username, password)
@@ -288,16 +291,16 @@ class SourceRepository @Inject constructor(
                 xtreamClient.liveStreams(server.scheme, server.host, server.port, username, password)
             }
             val vodCategories = async {
-                optionalCatalog { xtreamClient.vodCategories(server.scheme, server.host, server.port, username, password) }
+                optionalCatalog("vod_categories") { xtreamClient.vodCategories(server.scheme, server.host, server.port, username, password) }
             }
             val vodStreams = async {
-                optionalCatalog { xtreamClient.vodStreams(server.scheme, server.host, server.port, username, password) }
+                optionalCatalog("vod_streams") { xtreamClient.vodStreams(server.scheme, server.host, server.port, username, password) }
             }
             val seriesCategories = async {
-                optionalCatalog { xtreamClient.seriesCategories(server.scheme, server.host, server.port, username, password) }
+                optionalCatalog("series_categories") { xtreamClient.seriesCategories(server.scheme, server.host, server.port, username, password) }
             }
             val series = async {
-                optionalCatalog { xtreamClient.series(server.scheme, server.host, server.port, username, password) }
+                optionalCatalog("series") { xtreamClient.series(server.scheme, server.host, server.port, username, password) }
             }
             XtreamCatalog(
                 liveCategories = liveCategories.await(),
@@ -308,45 +311,63 @@ class SourceRepository @Inject constructor(
                 series = series.await(),
             )
         }
+        val missing = buildSet {
+            if (catalog.vodCategories == null || catalog.vodStreams == null) add(SECTION_VOD)
+            if (catalog.seriesCategories == null || catalog.series == null) add(SECTION_SERIES)
+        }
         emit(SourceSyncPhase.Progress(
             SyncStep.FETCHING,
-            catalog.liveStreams.size + catalog.vodStreams.size + catalog.series.size,
+            catalog.liveStreams.size + catalog.vodStreams.orEmpty().size + catalog.series.orEmpty().size,
         ))
 
         val categories = buildList {
             addAll(catalog.liveCategories.toEntities(sourceId, Kinds.LIVE))
-            addAll(catalog.vodCategories.toEntities(sourceId, Kinds.VOD))
-            addAll(catalog.seriesCategories.toEntities(sourceId, Kinds.SERIES))
+            addAll(catalog.vodCategories.orEmpty().toEntities(sourceId, Kinds.VOD))
+            addAll(catalog.seriesCategories.orEmpty().toEntities(sourceId, Kinds.SERIES))
         }
         val channels = buildList {
             addAll(catalog.liveStreams.map { it.toLiveEntity(sourceId, server, username, password) })
-            addAll(catalog.vodStreams.map { it.toVodEntity(sourceId, server, username, password) })
-            addAll(catalog.series.map { it.toSeriesEntity(sourceId) })
+            addAll(catalog.vodStreams.orEmpty().map { it.toVodEntity(sourceId, server, username, password) })
+            addAll(catalog.series.orEmpty().map { it.toSeriesEntity(sourceId) })
         }
-        replaceCatalog(sourceId, categories, channels, userAgent = null)
+        // Las secciones que el servidor no devolvió conservan sus filas
+        // anteriores: un fallo transitorio no debe borrar contenido ya importado.
+        val keptKinds = missing.map { if (it == SECTION_VOD) Kinds.VOD else Kinds.SERIES }.toSet()
+        replaceCatalog(sourceId, categories, channels, userAgent = null, keepKinds = keptKinds)
         ensureActiveSource(sourceId)
-        emit(SourceSyncPhase.Done(sourceId))
+        emit(SourceSyncPhase.Done(sourceId, missing))
     }.flowOn(dispatchers.io)
 
     private data class XtreamCatalog(
         val liveCategories: List<XtCategory>,
         val liveStreams: List<XtStream>,
-        val vodCategories: List<XtCategory>,
-        val vodStreams: List<XtStream>,
-        val seriesCategories: List<XtCategory>,
-        val series: List<XtSeries>,
+        val vodCategories: List<XtCategory>?,
+        val vodStreams: List<XtStream>?,
+        val seriesCategories: List<XtCategory>?,
+        val series: List<XtSeries>?,
     )
 
-    private suspend fun <T> optionalCatalog(block: suspend () -> List<T>): List<T> = try {
-        block()
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        // VOD/series son opcionales en Xtream, pero el fallo debe quedar
-        // registrado: un catálogo vacío silencioso es indistinguible de un
-        // panel sin contenido.
-        Log.w(TAG, "Catálogo opcional Xtream no disponible", e)
-        emptyList()
+    /**
+     * VOD/series son opcionales en Xtream: un fallo devuelve null (tras un
+     * reintento) para distinguir "el panel no tiene esta sección" de "el
+     * servidor no respondió".
+     */
+    private suspend fun <T> optionalCatalog(name: String, block: suspend () -> List<T>): List<T>? {
+        repeat(2) { attempt ->
+            try {
+                return block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (attempt == 0) {
+                    Log.w(TAG, "Catálogo $name falló, reintentando", e)
+                    delay(1_500)
+                } else {
+                    Log.w(TAG, "Catálogo opcional Xtream no disponible: $name", e)
+                }
+            }
+        }
+        return null
     }
 
     private fun List<XtCategory>.toEntities(
@@ -549,14 +570,20 @@ class SourceRepository @Inject constructor(
         channels: List<ChannelEntity>,
         userAgent: String?,
         epgUrl: String? = null,
+        keepKinds: Set<String> = emptySet(),
     ) {
         database.withTransaction {
             val favorites = channelDao.favoriteExternalIds(sourceId).toHashSet()
             val lockedCategories = categoryDao.lockedExternalIds(sourceId).toHashSet()
             val previousCategories = categoryDao.allBySource(sourceId)
                 .associateBy { it.externalId }
-            channelDao.deleteBySource(sourceId)
-            categoryDao.deleteBySource(sourceId)
+            if (keepKinds.isEmpty()) {
+                channelDao.deleteBySource(sourceId)
+                categoryDao.deleteBySource(sourceId)
+            } else {
+                channelDao.deleteBySourceExceptKinds(sourceId, keepKinds)
+                categoryDao.deleteBySourceExceptKinds(sourceId, keepKinds)
+            }
             val insertedCategoryIds = categoryDao.insertAll(
                 categories.map { category ->
                     val previous = previousCategories[category.externalId]
@@ -672,6 +699,8 @@ class SourceRepository @Inject constructor(
     private companion object {
         const val TAG = "SourceRepository"
         const val BATCH_SIZE = 500
+        const val SECTION_VOD = "vod"
+        const val SECTION_SERIES = "series"
         const val CHARSET_SAMPLE_SIZE = 64 * 1024
         const val PLAYLIST_DIRECTORY = "playlists"
     }

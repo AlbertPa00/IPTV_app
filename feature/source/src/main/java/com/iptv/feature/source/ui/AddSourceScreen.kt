@@ -218,6 +218,22 @@ fun AddSourceScreen(
                 )
             }
 
+            if (state.partialDoneSourceId != null) {
+                val sections = mutableListOf<String>()
+                for (res in state.partialSections) sections += stringResource(res)
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.source_sync_partial, sections.joinToString(", ")),
+                    color = MaterialTheme.colorScheme.tertiary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = viewModel::confirmDone,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(stringResource(R.string.source_continue)) }
+            }
+
             Spacer(Modifier.height(32.dp))
         }
     }

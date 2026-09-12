@@ -32,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -102,6 +103,35 @@ fun SettingsScreen(
                     onRefresh = { sourcesViewModel.refresh(row.source) },
                     onDelete = { sourcesViewModel.requestDelete(row.source) },
                 )
+            }
+        }
+
+        sourcesState.noticeRes?.let { res ->
+            item {
+                val sections = mutableListOf<String>()
+                for (sectionRes in sourcesState.noticeSections) sections += stringResource(sectionRes)
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = if (sections.isEmpty()) {
+                                stringResource(res)
+                            } else {
+                                stringResource(res, sections.joinToString(", "))
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = sourcesViewModel::dismissNotice) {
+                            Text(stringResource(R.string.pin_accept))
+                        }
+                    }
+                }
             }
         }
 

@@ -1,10 +1,13 @@
 package com.iptv.feature.source.ui
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.entity.SourceEntity
+import com.iptv.feature.source.R
 import com.iptv.feature.source.data.SourceRepository
+import com.iptv.feature.source.domain.SourceSyncPhase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,10 +37,13 @@ class SourcesViewModel @Inject constructor(
         val rows: List<SourceRow> = emptyList(),
         val refreshingIds: Set<Long> = emptySet(),
         val pendingDelete: SourceEntity? = null,
+        @StringRes val noticeRes: Int? = null,
+        val noticeSections: List<Int> = emptyList(),
     )
 
     private val refreshingIds = MutableStateFlow<Set<Long>>(emptySet())
     private val pendingDelete = MutableStateFlow<SourceEntity?>(null)
+    private val notice = MutableStateFlow<Pair<Int, List<Int>>?>(null)
 
     val uiState: StateFlow<UiState> = combine(
         repository.observeSources().flatMapLatest { sources ->
@@ -53,8 +59,15 @@ class SourcesViewModel @Inject constructor(
         },
         refreshingIds,
         pendingDelete,
-    ) { rows, refreshing, pending ->
-        UiState(rows = rows, refreshingIds = refreshing, pendingDelete = pending)
+        notice,
+    ) { rows, refreshing, pending, noticeState ->
+        UiState(
+            rows = rows,
+            refreshingIds = refreshing,
+            pendingDelete = pending,
+            noticeRes = noticeState?.first,
+            noticeSections = noticeState?.second.orEmpty(),
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState())
 
     fun setActive(id: Long) {
@@ -65,9 +78,27 @@ class SourcesViewModel @Inject constructor(
         if (source.id in refreshingIds.value) return
         refreshingIds.update { it + source.id }
         viewModelScope.launch {
-            repository.refresh(source).collect { /* el progreso se refleja al terminar vía Room */ }
+            repository.refresh(source).collect { phase ->
+                when (phase) {
+                    is SourceSyncPhase.Done ->
+                        if (phase.missingSections.isNotEmpty()) {
+                            notice.value =
+                                R.string.sources_sync_partial to
+                                    phase.missingSections.map(::sectionLabelRes)
+                        }
+
+                    is SourceSyncPhase.Failed ->
+                        notice.value = R.string.sources_refresh_failed to emptyList()
+
+                    else -> Unit
+                }
+            }
             refreshingIds.update { it - source.id }
         }
+    }
+
+    fun dismissNotice() {
+        notice.value = null
     }
 
     fun requestDelete(source: SourceEntity) {
@@ -83,4 +114,10 @@ class SourcesViewModel @Inject constructor(
         pendingDelete.value = null
         viewModelScope.launch { repository.deleteSource(target.id) }
     }
+}
+
+@StringRes
+internal fun sectionLabelRes(section: String): Int = when (section) {
+    "vod" -> R.string.source_section_vod
+    else -> R.string.source_section_series
 }
