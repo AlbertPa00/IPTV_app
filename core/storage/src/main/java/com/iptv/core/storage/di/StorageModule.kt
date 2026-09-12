@@ -11,6 +11,7 @@ import com.iptv.core.storage.db.AppDatabase
 import com.iptv.core.storage.db.MIGRATION_1_2
 import com.iptv.core.storage.db.MIGRATION_2_3
 import com.iptv.core.storage.db.MIGRATION_3_4
+import com.iptv.core.storage.db.MIGRATION_4_5
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -26,7 +27,7 @@ object StorageModule {
     @Singleton
     fun database(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "iptv.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
 
     @Provides

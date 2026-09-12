@@ -14,6 +14,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
@@ -75,6 +76,8 @@ class PlayerViewModel @Inject constructor(
         val castDeviceName: String? = null,
         val showReturnToMobile: Boolean = false,
         val castErrorDetail: String? = null,
+        /** Epoch ms en que el temporizador de apagado pausará; null = inactivo. */
+        val sleepTimerEndAtMs: Long? = null,
     )
 
     private var channelId: Long = savedStateHandle.get<Long>("channelId")
@@ -148,6 +151,38 @@ class PlayerViewModel @Inject constructor(
     /** Activa/desactiva la entrada automática a PiP al salir con Home. */
     fun setPipAutoEnter(enabled: Boolean) {
         pipController.autoEnterOnUserLeave = enabled
+    }
+
+    /** Marca/desmarca el canal actual como favorito. */
+    fun toggleFavorite() {
+        val channel = _uiState.value.channel ?: return
+        viewModelScope.launch {
+            channelDao.setFavorite(channel.id, !channel.isFavorite)
+            _uiState.update {
+                it.copy(channel = channel.copy(isFavorite = !channel.isFavorite))
+            }
+        }
+    }
+
+    // -- Temporizador de apagado -------------------------------------------
+
+    private var sleepTimerJob: kotlinx.coroutines.Job? = null
+
+    /** Programa la pausa en [minutes] minutos; null la cancela. */
+    fun setSleepTimer(minutes: Int?) {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        if (minutes == null) {
+            _uiState.update { it.copy(sleepTimerEndAtMs = null) }
+            return
+        }
+        val endAt = System.currentTimeMillis() + minutes * 60_000L
+        _uiState.update { it.copy(sleepTimerEndAtMs = endAt) }
+        sleepTimerJob = viewModelScope.launch {
+            delay(minutes * 60_000L)
+            _player.value?.pause()
+            _uiState.update { it.copy(sleepTimerEndAtMs = null) }
+        }
     }
 
     // Fuera de viewModelScope para poder hacer la escritura final en onCleared.
@@ -258,7 +293,11 @@ class PlayerViewModel @Inject constructor(
 
         val item = buildMediaItem(channel, isLive)
         mediaItem = item
-        val newLocalPlayer = ExoPlayer.Builder(appContext)
+        // EXTENSION_RENDERER_MODE_PREFER: usa el decodificador FFmpeg cuando el
+        // dispositivo no tiene códec nativo (AC3/EAC3/DTS, habitual en IPTV).
+        val renderersFactory = DefaultRenderersFactory(appContext)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        val newLocalPlayer = ExoPlayer.Builder(appContext, renderersFactory)
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
             .build()
             .also { it.addListener(localListener) }

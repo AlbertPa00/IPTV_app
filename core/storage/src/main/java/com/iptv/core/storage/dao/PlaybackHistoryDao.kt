@@ -41,7 +41,7 @@ interface PlaybackHistoryDao {
         FROM playback_history h INNER JOIN channels c ON c.id = h.channelId
         WHERE h.sourceId = :sourceId AND c.kind = :kind
           AND (c.categoryId IS NULL OR c.categoryId NOT IN
-              (SELECT id FROM categories WHERE isLocked = 1))
+              (SELECT id FROM categories WHERE isLocked = 1 OR hidden = 1))
         ORDER BY h.updatedAt DESC LIMIT :limit
         """,
     )
@@ -56,7 +56,7 @@ interface PlaybackHistoryDao {
         SELECT c.* FROM playback_history h INNER JOIN channels c ON c.id = h.channelId
         WHERE h.sourceId = :sourceId AND c.kind = :kind
           AND (c.categoryId IS NULL OR c.categoryId NOT IN
-              (SELECT id FROM categories WHERE isLocked = 1))
+              (SELECT id FROM categories WHERE isLocked = 1 OR hidden = 1))
         ORDER BY h.updatedAt DESC
         """,
     )

@@ -19,6 +19,7 @@ class IptvApplication : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var syncScheduler: CatalogSyncScheduler
     @Inject lateinit var prefs: AppPreferences
+    @Inject lateinit var crashReporter: CrashReporter
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -34,6 +35,10 @@ class IptvApplication : Application(), Configuration.Provider {
         applicationScope.launch {
             combine(prefs.autoRefreshEnabled, prefs.autoRefreshWifiOnly, ::Pair)
                 .collect { (enabled, wifiOnly) -> syncScheduler.apply(enabled, wifiOnly) }
+        }
+        // Opt-in del usuario; sin google-services.json es un no-op seguro.
+        applicationScope.launch {
+            prefs.crashReportingEnabled.collect { crashReporter.setEnabled(it) }
         }
     }
 }

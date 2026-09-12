@@ -24,10 +24,6 @@
     <string name="catalog_empty_search">No results for your search</string>
     <string name="catalog_empty_favorites">No favorites yet. Star channels and titles to pin them here.</string>
     <string name="catalog_cd_favorite">Toggle favorite</string>
-    <string name="search_title">Search</string>
-    <string name="search_subtitle">Across channels, movies and series</string>
-    <string name="search_hint">Movie, series or channel…</string>
-    <string name="search_prompt">Type to search the whole catalog</string>
     <string name="catalog_favorite_add">Add to favorites</string>
     <string name="catalog_favorite_remove">Remove from favorites</string>
 

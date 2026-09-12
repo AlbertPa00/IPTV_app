@@ -43,6 +43,7 @@ class SettingsViewModel @Inject constructor(
     data class UiState(
         val autoRefresh: Boolean = true,
         val wifiOnly: Boolean = true,
+        val crashReporting: Boolean = false,
         val parentalEnabled: Boolean = false,
         val categories: List<CategoryEntity> = emptyList(),
         val pinPrompt: PinPrompt? = null,
@@ -65,16 +66,22 @@ class SettingsViewModel @Inject constructor(
     private val activeSource = sourceDao.observeActive()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    val uiState: StateFlow<UiState> = combine(
+    private val syncPrefs = combine(
         prefs.autoRefreshEnabled,
         prefs.autoRefreshWifiOnly,
+        prefs.crashReportingEnabled,
+    ) { autoRefresh, wifiOnly, crashReporting -> Triple(autoRefresh, wifiOnly, crashReporting) }
+
+    val uiState: StateFlow<UiState> = combine(
+        syncPrefs,
         prefs.hasPin,
         categories,
         combine(pinPrompt, pinError, managingCategories) { p, e, m -> Triple(p, e, m) },
-    ) { autoRefresh, wifiOnly, hasPin, cats, (prompt, error, managing) ->
+    ) { (autoRefresh, wifiOnly, crashReporting), hasPin, cats, (prompt, error, managing) ->
         UiState(
             autoRefresh = autoRefresh,
             wifiOnly = wifiOnly,
+            crashReporting = crashReporting,
             parentalEnabled = hasPin,
             categories = cats,
             pinPrompt = prompt,
@@ -97,6 +104,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setCrashReporting(enabled: Boolean) {
+        prefs.setCrashReporting(enabled)
+    }
+
     /** Entrada del usuario al flujo de control parental. */
     fun onParentalToggleClick() {
         pinPrompt.value = if (prefs.hasPinSet()) PinPrompt.DISABLE else PinPrompt.CREATE
@@ -108,8 +119,13 @@ class SettingsViewModel @Inject constructor(
             managingCategories.value = false
             return
         }
-        pinPrompt.value = PinPrompt.MANAGE
-        pinError.value = false
+        // El PIN sólo protege si existe; ocultar/reordenar no es sensible.
+        if (prefs.hasPinSet()) {
+            pinPrompt.value = PinPrompt.MANAGE
+            pinError.value = false
+        } else {
+            managingCategories.value = true
+        }
     }
 
     fun dismissPin() {
@@ -174,6 +190,28 @@ class SettingsViewModel @Inject constructor(
 
     fun setCategoryLocked(categoryId: Long, locked: Boolean) {
         viewModelScope.launch { categoryDao.setLocked(categoryId, locked) }
+    }
+
+    fun setCategoryHidden(categoryId: Long, hidden: Boolean) {
+        viewModelScope.launch { categoryDao.setHidden(categoryId, hidden) }
+    }
+
+    /**
+     * Mueve la categoría una posición dentro de su grupo (LIVE/VOD/SERIES).
+     * Reescribe el sortOrder del grupo completo según el orden visible.
+     */
+    fun moveCategory(categoryId: Long, up: Boolean) {
+        val list = categories.value
+        val index = list.indexOfFirst { it.id == categoryId }
+        if (index < 0) return
+        val kind = list[index].kind
+        val group = list.filter { it.kind == kind }.toMutableList()
+        val from = group.indexOfFirst { it.id == categoryId }
+        val to = if (up) from - 1 else from + 1
+        if (to !in group.indices) return
+        group[from] = group[to].also { group[to] = group[from] }
+        val reordered = group.mapIndexed { i, category -> category.copy(sortOrder = i) }
+        viewModelScope.launch { categoryDao.updateAll(reordered) }
     }
 
     fun closeCategories() {

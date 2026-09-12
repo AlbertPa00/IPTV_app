@@ -66,6 +66,14 @@
     <string name="settings_parental_off_sub">Protege con un PIN las categorías que elijas</string>
     <string name="settings_parental_manage">Gestionar categorías bloqueadas</string>
     <string name="settings_locked_categories">Categorías bloqueadas</string>
+    <string name="settings_categories_manage">Gestionar categorías</string>
+    <string name="settings_categories_manage_sub">Ocultar, bloquear y reordenar los grupos de tu lista</string>
+    <string name="settings_crash_reporting">Informes de fallos</string>
+    <string name="settings_crash_reporting_sub">Enviar informes de error anónimos para ayudar a mejorar la app</string>
+    <string name="category_show">Mostrar</string>
+    <string name="category_hide">Ocultar</string>
+    <string name="category_move_up">Subir</string>
+    <string name="category_move_down">Bajar</string>
     <string name="settings_about_title">Acerca de</string>
     <string name="settings_version">Versión</string>
     <string name="settings_licenses">Licencias de código abierto</string>

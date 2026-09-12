@@ -39,6 +39,14 @@ class AppPreferences @Inject constructor(
     fun isAutoRefreshEnabled(): Boolean = prefs.getBoolean(KEY_AUTO_REFRESH, true)
     fun isAutoRefreshWifiOnly(): Boolean = prefs.getBoolean(KEY_WIFI_ONLY, true)
 
+    // -- Informes de fallos (opt-in) -----------------------------------------
+
+    val crashReportingEnabled: Flow<Boolean> = booleanFlow(KEY_CRASH_REPORTING, default = false)
+
+    fun setCrashReporting(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_CRASH_REPORTING, enabled).apply()
+    }
+
     // -- Control parental (PIN) ----------------------------------------------
 
     val hasPin: Flow<Boolean> = stringFlow(KEY_PIN_HASH).map { !it.isNullOrBlank() }
@@ -96,6 +104,7 @@ class AppPreferences @Inject constructor(
         const val PREFS_NAME = "iptv_prefs"
         const val KEY_AUTO_REFRESH = "auto_refresh_enabled"
         const val KEY_WIFI_ONLY = "auto_refresh_wifi_only"
+        const val KEY_CRASH_REPORTING = "crash_reporting_enabled"
         const val KEY_PIN_SALT = "parental_pin_salt"
         const val KEY_PIN_HASH = "parental_pin_hash"
         const val SALT_BYTES = 16

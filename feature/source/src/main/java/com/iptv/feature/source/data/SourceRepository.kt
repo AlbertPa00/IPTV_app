@@ -526,10 +526,20 @@ class SourceRepository @Inject constructor(
         database.withTransaction {
             val favorites = channelDao.favoriteExternalIds(sourceId).toHashSet()
             val lockedCategories = categoryDao.lockedExternalIds(sourceId).toHashSet()
+            val previousCategories = categoryDao.allBySource(sourceId)
+                .associateBy { it.externalId }
             channelDao.deleteBySource(sourceId)
             categoryDao.deleteBySource(sourceId)
             val insertedCategoryIds = categoryDao.insertAll(
-                categories.map { it.copy(isLocked = it.externalId in lockedCategories) },
+                categories.map { category ->
+                    val previous = previousCategories[category.externalId]
+                    category.copy(
+                        isLocked = category.externalId in lockedCategories,
+                        hidden = previous?.hidden ?: false,
+                        // Conserva el orden personalizado si el usuario lo cambió.
+                        sortOrder = previous?.sortOrder ?: category.sortOrder,
+                    )
+                },
             )
             val externalToRowId = categories.map { it.externalId }.zip(insertedCategoryIds).toMap()
             channels.chunked(BATCH_SIZE).forEach { batch ->

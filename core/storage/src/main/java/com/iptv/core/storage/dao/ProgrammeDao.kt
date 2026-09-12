@@ -72,7 +72,7 @@ interface ProgrammeDao {
         )
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE'
           AND (c.categoryId IS NULL OR c.categoryId NOT IN
-              (SELECT id FROM categories WHERE isLocked = 1))
+              (SELECT id FROM categories WHERE isLocked = 1 OR hidden = 1))
         ORDER BY c.sortOrder, c.name
         """
     )

@@ -33,6 +33,12 @@
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
             android:value="com.iptv.feature.player.cast.IptvCastOptionsProvider" />
 
+        <!-- Crashlytics desactivado por defecto: se activa desde Ajustes
+             (opt-in) si el usuario lo permite. -->
+        <meta-data
+            android:name="firebase_crashlytics_collection_enabled"
+            android:value="false" />
+
         <!-- WorkManager se inicializa vía Hilt (IptvApplication implementa
              Configuration.Provider): se desactiva el inicializador por
              defecto para no arrancarlo dos veces. -->

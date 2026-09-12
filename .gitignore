@@ -45,8 +45,8 @@ vcs.xml
 *.p12
 keystore.properties
 
-# Google Services (uncomment if you add Firebase)
-# google-services.json
+# Firebase config (project-specific; not committed)
+google-services.json
 
 # fastlane
 fastlane/report.xml

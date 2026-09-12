@@ -3,8 +3,11 @@ package com.iptv.feature.player.ui
 import android.Manifest
 import android.app.Activity
 import android.app.PictureInPictureParams
+import android.media.AudioManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Rational
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -38,21 +41,25 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
+
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -72,6 +79,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -99,16 +107,23 @@ import androidx.media3.common.Tracks
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import coil.compose.AsyncImage
 import com.iptv.core.designsystem.components.LoadingState
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.feature.player.R
 import com.iptv.feature.player.cast.CastRouteButton
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private val PlayerCarmine = Color(0xFFE5093D)
 private val PlayerGraphite = Color(0xFF17191E)
 private val PlayerMuted = Color(0xFFB8BAC0)
+
+/** Tipo de ajuste por deslizamiento vertical: brillo (izquierda) o volumen. */
+private enum class GestureKind { BRIGHTNESS, VOLUME }
+private data class GestureHud(val kind: GestureKind, val fraction: Float)
 
 /** Pantalla completa cuyos controles operan sobre el Player local o remoto activo. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -135,8 +150,48 @@ fun PlayerScreen(
     var tracksTick by remember { mutableStateOf(0) }
     var resizeMode by remember { mutableStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var askedMediaPerms by rememberSaveable { mutableStateOf(false) }
+    var sleepDialogVisible by remember { mutableStateOf(false) }
+    var gestureHud by remember { mutableStateOf<GestureHud?>(null) }
 
     val activity = remember(context) { context.findActivity() }
+    val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
+    val hudScope = rememberCoroutineScope()
+
+    fun readBrightness(): Float =
+        activity?.window?.attributes?.screenBrightness?.takeIf { it >= 0f } ?: 0.5f
+
+    fun applyBrightness(fraction: Float) {
+        activity?.window?.let { window ->
+            window.attributes = window.attributes.apply { screenBrightness = fraction }
+        }
+    }
+
+    fun readVolume(): Float = audioManager?.let {
+        val max = it.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        it.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
+    } ?: 0f
+
+    fun applyVolume(fraction: Float) {
+        audioManager?.let {
+            val max = it.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            it.setStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                (fraction * max).roundToInt().coerceIn(0, max),
+                0,
+            )
+        }
+    }
+
+    // La pantalla vuelve al brillo del sistema al salir del reproductor.
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.window?.let { w ->
+                w.attributes = w.attributes.apply {
+                    screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                }
+            }
+        }
+    }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -253,25 +308,111 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        // Toque simple: mostrar/ocultar controles. Doble toque en VOD: ±10 s
-        // según la mitad de la pantalla. En PiP no hay gestos.
+        // Toque simple: mostrar/ocultar controles al instante (la espera del
+        // detector de doble toque hacía lenta la respuesta). Doble toque en
+        // VOD: ±10 s según la mitad de la pantalla. En PiP no hay gestos.
         Box(
-            Modifier.fillMaxSize().pointerInput(state.isLive, isInPipMode) {
-                if (isInPipMode) return@pointerInput
-                detectTapGestures(
-                    onTap = { controlsVisible = !controlsVisible },
-                    onDoubleTap = { offset ->
-                        if (!state.isLive) {
+            Modifier
+                .fillMaxSize()
+                .pointerInput(state.isLive, isInPipMode) {
+                    if (isInPipMode) return@pointerInput
+                    var lastTapAt = 0L
+                    detectTapGestures { offset ->
+                        val now = SystemClock.uptimeMillis()
+                        val isDoubleTap = now - lastTapAt <= ViewConfiguration.getDoubleTapTimeout()
+                        lastTapAt = now
+                        if (isDoubleTap && !state.isLive) {
                             controlsVisible = true
                             val delta = if (offset.x < size.width / 2f) -SEEK_STEP_MS else SEEK_STEP_MS
                             player?.let {
                                 it.seekTo((it.currentPosition + delta).coerceIn(0L, durationMs))
                             }
+                        } else {
+                            controlsVisible = !controlsVisible
                         }
-                    },
-                )
-            },
+                    }
+                }
+                .pointerInput(state.isCasting, isInPipMode) {
+                    if (isInPipMode) return@pointerInput
+                    var kind = GestureKind.VOLUME
+                    var fraction = 0f
+                    detectVerticalDragGestures(
+                        onDragStart = { offset ->
+                            kind = if (offset.x < size.width / 2f) {
+                                GestureKind.BRIGHTNESS
+                            } else {
+                                GestureKind.VOLUME
+                            }
+                            fraction = if (kind == GestureKind.BRIGHTNESS) {
+                                readBrightness()
+                            } else if (state.isCasting) {
+                                castVolume
+                            } else {
+                                readVolume()
+                            }
+                            gestureHud = GestureHud(kind, fraction)
+                        },
+                        onVerticalDrag = { change, amount ->
+                            change.consume()
+                            fraction = (fraction - amount / (size.height * 0.6f)).coerceIn(0f, 1f)
+                            if (kind == GestureKind.BRIGHTNESS) {
+                                applyBrightness(fraction)
+                            } else if (state.isCasting) {
+                                viewModel.setCastVolume(fraction)
+                            } else {
+                                applyVolume(fraction)
+                            }
+                            gestureHud = GestureHud(kind, fraction)
+                        },
+                        onDragEnd = {
+                            hudScope.launch {
+                                delay(GESTURE_HUD_MS)
+                                gestureHud = null
+                            }
+                        },
+                        onDragCancel = { gestureHud = null },
+                    )
+                },
         )
+
+        // Indicador temporal de brillo/volumen tras el gesto.
+        gestureHud?.let { hud ->
+            Surface(
+                color = Color.Black.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .align(if (hud.kind == GestureKind.BRIGHTNESS) Alignment.CenterStart else Alignment.CenterEnd)
+                    .padding(24.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = if (hud.kind == GestureKind.BRIGHTNESS) {
+                            Icons.Filled.BrightnessMedium
+                        } else {
+                            Icons.AutoMirrored.Filled.VolumeUp
+                        },
+                        contentDescription = stringResource(
+                            if (hud.kind == GestureKind.BRIGHTNESS) {
+                                R.string.player_brightness
+                            } else {
+                                R.string.player_volume
+                            },
+                        ),
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "${(hud.fraction * 100).roundToInt()}%",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+        }
 
         // Emitiendo: la superficie de vídeo queda negra en el teléfono porque
         // el contenido va a la TV. Se muestra una pantalla informativa con el
@@ -335,6 +476,42 @@ fun PlayerScreen(
                         )
                         PlayerStatus(state)
                     }
+                    IconButton(
+                        onClick = {
+                            controlsVisible = true
+                            viewModel.toggleFavorite()
+                        },
+                        modifier = Modifier.size(48.dp).clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.45f)),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = stringResource(
+                                if (state.channel?.isFavorite == true) {
+                                    R.string.player_favorite_remove
+                                } else {
+                                    R.string.player_favorite_add
+                                },
+                            ),
+                            tint = if (state.channel?.isFavorite == true) PlayerCarmine else Color.White,
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    IconButton(
+                        onClick = {
+                            controlsVisible = true
+                            sleepDialogVisible = true
+                        },
+                        modifier = Modifier.size(48.dp).clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.45f)),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Bedtime,
+                            contentDescription = stringResource(R.string.player_sleep_timer),
+                            tint = if (state.sleepTimerEndAtMs != null) PlayerCarmine else Color.White,
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
                     if (!state.isCasting) {
                         IconButton(
                             onClick = { activity?.enterPip() },
@@ -561,6 +738,17 @@ fun PlayerScreen(
             TracksDialog(player = player, onDismiss = { tracksDialogVisible = false })
         }
 
+        if (sleepDialogVisible) {
+            SleepTimerDialog(
+                endAtMs = state.sleepTimerEndAtMs,
+                onSelect = { minutes ->
+                    viewModel.setSleepTimer(minutes)
+                    sleepDialogVisible = false
+                },
+                onDismiss = { sleepDialogVisible = false },
+            )
+        }
+
         when {
             state.channel == null && state.errorRes == null -> LoadingState()
             state.errorRes != null -> ErrorOverlay(
@@ -745,7 +933,11 @@ private fun CastBackdrop(
             ) {
                 IconButton(onClick = onMuteToggle) {
                     Icon(
-                        imageVector = if (muted) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                        imageVector = if (muted) {
+                            Icons.AutoMirrored.Filled.VolumeOff
+                        } else {
+                            Icons.AutoMirrored.Filled.VolumeUp
+                        },
                         contentDescription = stringResource(
                             if (muted) R.string.player_cast_unmute else R.string.player_cast_mute,
                         ),
@@ -801,6 +993,7 @@ private fun formatDuration(ms: Long): String {
 
 private const val CONTROLS_HIDE_DELAY_MS = 4_000L
 private const val SEEK_STEP_MS = 10_000L
+private const val GESTURE_HUD_MS = 900L
 
 private fun Activity.enterPip() {
     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
@@ -894,6 +1087,69 @@ private fun TracksDialog(player: Player?, onDismiss: () -> Unit) {
                                 },
                             )
                         }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.player_close), color = PlayerCarmine)
+            }
+        },
+        containerColor = PlayerGraphite,
+    )
+}
+
+/** Diálogo del temporizador de apagado: pausa la reproducción al cumplirse. */
+@Composable
+private fun SleepTimerDialog(
+    endAtMs: Long?,
+    onSelect: (Int?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val options = listOf(15, 30, 45, 60, 90)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.player_sleep_timer), color = Color.White) },
+        text = {
+            Column {
+                if (endAtMs != null) {
+                    val remaining = ((endAtMs - System.currentTimeMillis()) / 60_000L)
+                        .coerceAtLeast(1L)
+                    Text(
+                        stringResource(R.string.player_sleep_active_in, remaining),
+                        color = PlayerMuted,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                options.forEach { minutes ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(minutes) }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.player_sleep_minutes, minutes),
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+                if (endAtMs != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(null) }
+                            .padding(vertical = 10.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.player_sleep_off),
+                            color = PlayerCarmine,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                     }
                 }
             }

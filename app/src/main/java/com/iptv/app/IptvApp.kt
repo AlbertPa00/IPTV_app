@@ -5,7 +5,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
@@ -33,7 +32,6 @@ import androidx.navigation.navArgument
 import androidx.navigation.NavType
 import com.iptv.core.designsystem.components.LoadingState
 import com.iptv.feature.catalog.ui.ContentKind
-import com.iptv.feature.catalog.ui.GlobalSearchScreen
 import com.iptv.feature.catalog.ui.LiveTvScreen
 import com.iptv.feature.catalog.ui.MovieDetailsScreen
 import com.iptv.feature.catalog.ui.VodCatalogScreen
@@ -50,7 +48,6 @@ private object Routes {
     const val LiveTv = "live"
     const val Movies = "movies"
     const val Series = "series"
-    const val Search = "search"
     const val Guide = "guide"
     const val Settings = "settings"
     const val Player = "player/{channelId}"
@@ -72,7 +69,6 @@ private val mainDestinations = listOf(
     MainDestination(Routes.LiveTv, R.string.nav_live, Icons.Filled.LiveTv),
     MainDestination(Routes.Movies, R.string.nav_movies, Icons.Filled.Movie),
     MainDestination(Routes.Series, R.string.nav_series, Icons.Filled.Tv),
-    MainDestination(Routes.Search, R.string.nav_search, Icons.Filled.Search),
     MainDestination(Routes.Guide, R.string.nav_guide, Icons.Filled.CalendarMonth),
     MainDestination(Routes.Settings, R.string.nav_settings, Icons.Filled.Settings),
 )
@@ -138,13 +134,6 @@ private fun AppNavigation(navController: NavHostController, startDestination: St
                 VodCatalogScreen(
                     onItemClick = { navController.navigate(Routes.seriesDetails(it)) },
                     onResumeItem = { navController.navigate(Routes.player(it)) },
-                )
-            }
-            composable(Routes.Search) {
-                GlobalSearchScreen(
-                    onChannelClick = { navController.navigate(Routes.player(it)) },
-                    onMovieClick = { navController.navigate(Routes.movieDetails(it)) },
-                    onSeriesClick = { navController.navigate(Routes.seriesDetails(it)) },
                 )
             }
             composable(Routes.Guide) {

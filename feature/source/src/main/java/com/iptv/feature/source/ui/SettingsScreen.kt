@@ -17,8 +17,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -137,6 +141,28 @@ fun SettingsScreen(
             )
         }
 
+        item {
+            SwitchRow(
+                title = stringResource(R.string.settings_crash_reporting),
+                subtitle = stringResource(R.string.settings_crash_reporting_sub),
+                checked = settings.crashReporting,
+                onCheckedChange = settingsViewModel::setCrashReporting,
+            )
+        }
+
+        if (settings.categories.isNotEmpty()) {
+            item {
+                TextButton(
+                    onClick = settingsViewModel::onManageCategoriesClick,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.Lock, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text(stringResource(R.string.settings_categories_manage))
+                }
+            }
+        }
+
         item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
 
         item {
@@ -159,19 +185,6 @@ fun SettingsScreen(
                 checked = settings.parentalEnabled,
                 onCheckedChange = { settingsViewModel.onParentalToggleClick() },
             )
-        }
-
-        if (settings.parentalEnabled) {
-            item {
-                TextButton(
-                    onClick = settingsViewModel::onManageCategoriesClick,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Filled.Lock, contentDescription = null)
-                    Spacer(Modifier.size(8.dp))
-                    Text(stringResource(R.string.settings_parental_manage))
-                }
-            }
         }
 
         item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
@@ -233,9 +246,12 @@ fun SettingsScreen(
     }
 
     if (settings.managingCategories) {
-        LockedCategoriesDialog(
+        CategoriesDialog(
             categories = settings.categories,
-            onToggle = settingsViewModel::setCategoryLocked,
+            parentalEnabled = settings.parentalEnabled,
+            onToggleLock = settingsViewModel::setCategoryLocked,
+            onToggleHidden = settingsViewModel::setCategoryHidden,
+            onMove = settingsViewModel::moveCategory,
             onDismiss = settingsViewModel::closeCategories,
         )
     }
@@ -356,33 +372,42 @@ private fun PinDialog(
     )
 }
 
+/**
+ * Gestión de categorías: reordenar dentro de cada grupo, ocultar/mostrar y
+ * (si hay PIN parental) bloquear.
+ */
 @Composable
-private fun LockedCategoriesDialog(
+private fun CategoriesDialog(
     categories: List<CategoryEntity>,
-    onToggle: (Long, Boolean) -> Unit,
+    parentalEnabled: Boolean,
+    onToggleLock: (Long, Boolean) -> Unit,
+    onToggleHidden: (Long, Boolean) -> Unit,
+    onMove: (Long, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.settings_locked_categories)) },
+        title = { Text(stringResource(R.string.settings_categories_manage)) },
         text = {
             LazyColumn {
-                items(categories, key = { it.id }) { category ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(category.name, style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                kindLabel(category.kind),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Switch(
-                            checked = category.isLocked,
-                            onCheckedChange = { onToggle(category.id, it) },
+                categories.groupBy { it.kind }.forEach { (kind, group) ->
+                    item(key = "header_$kind") {
+                        Text(
+                            kindLabel(kind),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+                        )
+                    }
+                    items(group, key = { it.id }) { category ->
+                        CategoryManageRow(
+                            category = category,
+                            showLock = parentalEnabled,
+                            firstInGroup = group.first().id == category.id,
+                            lastInGroup = group.last().id == category.id,
+                            onToggleLock = onToggleLock,
+                            onToggleHidden = onToggleHidden,
+                            onMove = onMove,
                         )
                     }
                 }
@@ -392,6 +417,61 @@ private fun LockedCategoriesDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.pin_accept)) }
         },
     )
+}
+
+@Composable
+private fun CategoryManageRow(
+    category: CategoryEntity,
+    showLock: Boolean,
+    firstInGroup: Boolean,
+    lastInGroup: Boolean,
+    onToggleLock: (Long, Boolean) -> Unit,
+    onToggleHidden: (Long, Boolean) -> Unit,
+    onMove: (Long, Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column {
+            IconButton(onClick = { onMove(category.id, true) }, enabled = !firstInGroup) {
+                Icon(
+                    Icons.Filled.KeyboardArrowUp,
+                    contentDescription = stringResource(R.string.category_move_up),
+                )
+            }
+            IconButton(onClick = { onMove(category.id, false) }, enabled = !lastInGroup) {
+                Icon(
+                    Icons.Filled.KeyboardArrowDown,
+                    contentDescription = stringResource(R.string.category_move_down),
+                )
+            }
+        }
+        Text(
+            category.name,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = { onToggleHidden(category.id, !category.hidden) }) {
+            Icon(
+                if (category.hidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                contentDescription = stringResource(
+                    if (category.hidden) R.string.category_show else R.string.category_hide
+                ),
+                tint = if (category.hidden) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+        }
+        if (showLock) {
+            Switch(
+                checked = category.isLocked,
+                onCheckedChange = { onToggleLock(category.id, it) },
+            )
+        }
+    }
 }
 
 @Composable

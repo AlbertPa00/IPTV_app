@@ -18,12 +18,14 @@ import com.iptv.core.storage.entity.SourceEntity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -37,7 +39,7 @@ import kotlinx.coroutines.launch
  * destacado, favoritos y una fila por categoría — más una parrilla paginada
  * para "ver todo" y para los resultados de búsqueda.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class VodCatalogViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -179,7 +181,16 @@ class VodCatalogViewModel @Inject constructor(
         }
     }
 
-    val paging: Flow<PagingData<ChannelEntity>> = combine(activeSource, _uiState) { s, st -> s to st }
+    // Igual que en TV: no reconstruir el Pager a cada pulsación de búsqueda.
+    private val debouncedQuery = _uiState.map { it.query }
+        .distinctUntilChanged()
+        .debounce { if (it.isBlank()) 0L else 300L }
+
+    val paging: Flow<PagingData<ChannelEntity>> = combine(
+        activeSource,
+        _uiState,
+        debouncedQuery,
+    ) { source, state, query -> source to state.copy(query = query) }
         .distinctUntilChanged()
         .flatMapLatest { (source, state) ->
             if (source == null) {

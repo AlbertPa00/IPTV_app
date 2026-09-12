@@ -66,6 +66,14 @@
     <string name="settings_parental_off_sub">Protect the categories you choose with a PIN</string>
     <string name="settings_parental_manage">Manage locked categories</string>
     <string name="settings_locked_categories">Locked categories</string>
+    <string name="settings_categories_manage">Manage categories</string>
+    <string name="settings_categories_manage_sub">Hide, lock and reorder your playlist groups</string>
+    <string name="settings_crash_reporting">Crash reporting</string>
+    <string name="settings_crash_reporting_sub">Send anonymous crash reports to help improve the app</string>
+    <string name="category_show">Show</string>
+    <string name="category_hide">Hide</string>
+    <string name="category_move_up">Move up</string>
+    <string name="category_move_down">Move down</string>
     <string name="settings_about_title">About</string>
     <string name="settings_version">Version</string>
     <string name="settings_licenses">Open-source licenses</string>

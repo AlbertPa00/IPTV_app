@@ -8,6 +8,14 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+// Firebase sólo se enlaza si existe google-services.json (fuera del repo).
+// Sin él la app compila igualmente y el toggle de informes es un no-op seguro.
+val hasGoogleServices = file("google-services.json").exists()
+if (hasGoogleServices) {
+    apply(plugin = libs.plugins.gms.services.get().pluginId)
+    apply(plugin = libs.plugins.firebase.crashlytics.get().pluginId)
+}
+
 val signingPropsFile = rootProject.file("keystore.properties")
 val signingProps = Properties().apply {
     if (signingPropsFile.exists()) signingPropsFile.inputStream().use { load(it) }
@@ -93,6 +101,9 @@ dependencies {
 
     implementation(libs.androidx.work)
     implementation(libs.androidx.hilt.work)
+
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

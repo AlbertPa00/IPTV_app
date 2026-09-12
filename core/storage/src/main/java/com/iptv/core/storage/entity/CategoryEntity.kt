@@ -21,6 +21,8 @@ data class CategoryEntity(
     val sortOrder: Int = 0,
     /** Categoría bloqueada por control parental: se oculta en toda la app. */
     val isLocked: Boolean = false,
+    /** Categoría oculta por el usuario (ordenación/visibilidad del catálogo). */
+    val hidden: Boolean = false,
 )
 
 object Kinds {

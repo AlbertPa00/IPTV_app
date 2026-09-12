@@ -42,4 +42,12 @@
     <string name="player_aspect_ratio">Aspect ratio</string>
     <string name="player_close">Close</string>
     <string name="player_error_locked">Content blocked by parental control</string>
+    <string name="player_favorite_add">Add to favorites</string>
+    <string name="player_favorite_remove">Remove from favorites</string>
+    <string name="player_sleep_timer">Sleep timer</string>
+    <string name="player_sleep_minutes">%1$d minutes</string>
+    <string name="player_sleep_active_in">Pausing in %1$d min</string>
+    <string name="player_sleep_off">Disable timer</string>
+    <string name="player_brightness">Brightness</string>
+    <string name="player_volume">Volume</string>
 </resources>

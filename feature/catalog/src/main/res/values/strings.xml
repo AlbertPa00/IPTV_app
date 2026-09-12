@@ -24,10 +24,6 @@
     <string name="catalog_empty_search">No hay resultados para tu búsqueda</string>
     <string name="catalog_empty_favorites">Todavía no tienes favoritos. Marca canales y títulos con la estrella.</string>
     <string name="catalog_cd_favorite">Marcar o desmarcar favorito</string>
-    <string name="search_title">Buscar</string>
-    <string name="search_subtitle">En canales, películas y series</string>
-    <string name="search_hint">Película, serie o canal…</string>
-    <string name="search_prompt">Escribe para buscar en todo el catálogo</string>
     <string name="catalog_favorite_add">Añadir a favoritos</string>
     <string name="catalog_favorite_remove">Quitar de favoritos</string>
 

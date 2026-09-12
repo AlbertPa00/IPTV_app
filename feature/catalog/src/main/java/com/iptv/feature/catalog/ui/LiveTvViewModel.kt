@@ -17,6 +17,7 @@ import com.iptv.core.storage.entity.SourceEntity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -37,7 +39,7 @@ import kotlinx.coroutines.launch
  * Sección TV en directo: lista de canales paginada con favoritos, grupos,
  * búsqueda y la información "ahora / a continuación" de la EPG en cada fila.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class LiveTvViewModel @Inject constructor(
     private val channelDao: ChannelDao,
@@ -84,7 +86,17 @@ class LiveTvViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    val channels: Flow<PagingData<ChannelEntity>> = combine(activeSource, _filters) { s, f -> s to f }
+    // El texto de búsqueda se debilita para no reconstruir el Pager a cada
+    // pulsación; el resto de filtros (favoritos, grupo) aplican al instante.
+    private val debouncedQuery = _filters.map { it.query }
+        .distinctUntilChanged()
+        .debounce { if (it.isBlank()) 0L else 300L }
+
+    val channels: Flow<PagingData<ChannelEntity>> = combine(
+        activeSource,
+        _filters,
+        debouncedQuery,
+    ) { source, filters, query -> source to filters.copy(query = query) }
         .distinctUntilChanged()
         .flatMapLatest { (source, filters) ->
             if (source == null) {

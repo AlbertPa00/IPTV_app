@@ -8,10 +8,10 @@ import androidx.room.Query
 import com.iptv.core.storage.entity.ChannelEntity
 import kotlinx.coroutines.flow.Flow
 
-/** Excluye canales de categorías bloqueadas por control parental. */
+/** Excluye canales de categorías bloqueadas u ocultas por el usuario. */
 private const val UNLOCKED_ONLY =
     "(categoryId IS NULL OR categoryId NOT IN " +
-        "(SELECT id FROM categories WHERE isLocked = 1))"
+        "(SELECT id FROM categories WHERE isLocked = 1 OR hidden = 1))"
 
 @Dao
 interface ChannelDao {

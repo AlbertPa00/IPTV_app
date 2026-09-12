@@ -4,7 +4,6 @@
     <string name="nav_live">TV</string>
     <string name="nav_movies">Movies</string>
     <string name="nav_series">Series</string>
-    <string name="nav_search">Search</string>
     <string name="nav_guide">Guide</string>
     <string name="nav_settings">Settings</string>
 </resources>
