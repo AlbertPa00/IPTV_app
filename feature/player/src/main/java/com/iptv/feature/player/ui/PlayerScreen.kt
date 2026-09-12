@@ -1022,7 +1022,18 @@ private fun android.content.Context.findActivity(): Activity? {
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun TracksDialog(player: Player?, onDismiss: () -> Unit) {
-    val tracks = player?.currentTracks
+    // Tracks no es observable: sin este listener el check no se movía al
+    // elegir pista y parecía que la selección no se aplicaba.
+    var tracks by remember(player) { mutableStateOf(player?.currentTracks) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onTracksChanged(newTracks: Tracks) {
+                tracks = newTracks
+            }
+        }
+        player?.addListener(listener)
+        onDispose { player?.removeListener(listener) }
+    }
     val groups = tracks?.groups.orEmpty()
         .filter { it.type == C.TRACK_TYPE_AUDIO || it.type == C.TRACK_TYPE_TEXT }
     AlertDialog(
