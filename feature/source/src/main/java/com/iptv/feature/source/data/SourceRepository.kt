@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.room.withTransaction
 import com.iptv.core.common.dispatchers.AppDispatchers
+import com.iptv.core.common.text.LanguageTag
 import com.iptv.core.common.text.TextNormalizer
 import com.iptv.core.network.DEFAULT_USER_AGENT
 import com.iptv.core.storage.dao.CategoryDao
@@ -325,10 +326,13 @@ class SourceRepository @Inject constructor(
             addAll(catalog.vodCategories.orEmpty().toEntities(sourceId, Kinds.VOD))
             addAll(catalog.seriesCategories.orEmpty().toEntities(sourceId, Kinds.SERIES))
         }
+        // Cada canal hereda el idioma de su categoría (prefijo "ES -", "AR|"…);
+        // sin categoría se intenta detectar por el propio nombre.
+        val langByGroup = categories.associate { it.externalId to it.language }
         val channels = buildList {
-            addAll(catalog.liveStreams.map { it.toLiveEntity(sourceId, server, username, password) })
-            addAll(catalog.vodStreams.orEmpty().map { it.toVodEntity(sourceId, server, username, password) })
-            addAll(catalog.series.orEmpty().map { it.toSeriesEntity(sourceId) })
+            addAll(catalog.liveStreams.map { it.toLiveEntity(sourceId, server, username, password).withLanguage(langByGroup) })
+            addAll(catalog.vodStreams.orEmpty().map { it.toVodEntity(sourceId, server, username, password).withLanguage(langByGroup) })
+            addAll(catalog.series.orEmpty().map { it.toSeriesEntity(sourceId).withLanguage(langByGroup) })
         }
         // Las secciones que el servidor no devolvió conservan sus filas
         // anteriores: un fallo transitorio no debe borrar contenido ya importado.
@@ -380,6 +384,7 @@ class SourceRepository @Inject constructor(
             kind = kind,
             name = category.category_name,
             sortOrder = index,
+            language = LanguageTag.detect(category.category_name),
         )
     }
 
@@ -439,6 +444,11 @@ class SourceRepository @Inject constructor(
 
     private fun categoryKey(kind: String, categoryId: String) = "$kind:$categoryId"
 
+    private fun ChannelEntity.withLanguage(langByGroup: Map<String, String>) = copy(
+        language = groupTitle?.let { langByGroup[it] }?.takeIf { it.isNotBlank() }
+            ?: LanguageTag.detect(name),
+    )
+
     private suspend fun importPlaylist(
         sourceId: Long,
         reader: BufferedReader,
@@ -455,7 +465,12 @@ class SourceRepository @Inject constructor(
             val kind = M3uContentClassifier.classify(parsed)
             userAgent = userAgent ?: parsed.userAgent
             addCategory(categories, sourceId, parsed.groupTitle, kind)
-            channels += parsed.toEntity(sourceId, kind)
+            // Prioridad: tvg-country > idioma del grupo > prefijo/alfabeto del nombre.
+            val groupKey = parsed.groupTitle?.let { categoryKey(kind, it) }
+            val language = parsed.countryCode()
+                ?: groupKey?.let { categories[it]?.language }?.takeIf { it.isNotBlank() }
+                ?: LanguageTag.detect(parsed.name)
+            channels += parsed.toEntity(sourceId, kind).copy(language = language)
             if (channels.size % BATCH_SIZE == 0) onProgress(channels.size)
         }
 
@@ -480,9 +495,15 @@ class SourceRepository @Inject constructor(
                 kind = kind,
                 name = name,
                 sortOrder = categories.size,
+                language = LanguageTag.detect(name),
             )
         }
     }
+
+    /** `tvg-country` llega como "ES", "ES;FR" o "ES, EN": primer código válido. */
+    private fun ParsedChannel.countryCode(): String? =
+        tvgCountry?.substringBefore(';')?.substringBefore(',')?.trim()?.uppercase()
+            ?.takeIf { it.length in 2..3 && it.all(Char::isLetter) }
 
     private fun ParsedChannel.toEntity(sourceId: Long, kind: String) = ChannelEntity(
         sourceId = sourceId,

@@ -15,14 +15,20 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -30,10 +36,13 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -265,4 +274,108 @@ internal fun emptyMessageFor(kind: ContentKind): Int = when (kind) {
     ContentKind.TV -> R.string.catalog_empty_tv
     ContentKind.MOVIES -> R.string.catalog_empty_movies
     ContentKind.SERIES -> R.string.catalog_empty_series
+}
+
+/** Chip que abre el selector de idioma. */
+@Composable
+internal fun LanguageChip(
+    selected: String?,
+    onClick: () -> Unit,
+) {
+    CategoryChip(
+        label = selected?.let { languageLabel(it) } ?: stringResource(R.string.catalog_language),
+        selected = selected != null,
+        onClick = onClick,
+        leadingIcon = {
+            Icon(Icons.Filled.Language, contentDescription = null, modifier = Modifier.size(16.dp))
+        },
+    )
+}
+
+/** Nombre legible del código: mapa manual para códigos ambiguos; el resto usa Locale. */
+@Composable
+internal fun languageLabel(code: String): String {
+    val manual = when (code) {
+        "AR" -> R.string.lang_ar
+        "LA" -> R.string.lang_la
+        "EXYU" -> R.string.lang_exyu
+        "ASIA" -> R.string.lang_asia
+        "AFR" -> R.string.lang_afr
+        "SCANDI" -> R.string.lang_scandi
+        "KU" -> R.string.lang_ku
+        "INT" -> R.string.lang_int
+        "WORLD" -> R.string.lang_world
+        "EU" -> R.string.lang_eu
+        "EN" -> R.string.lang_en
+        "NF" -> R.string.lang_nf
+        "MV" -> R.string.lang_mv
+        "MC" -> R.string.lang_mc
+        "RX" -> R.string.lang_rx
+        "AS" -> R.string.lang_as
+        else -> null
+    }
+    if (manual != null) return stringResource(manual)
+    val country = java.util.Locale("", code).getDisplayCountry(java.util.Locale.getDefault())
+    return if (country.isBlank() || country.equals(code, ignoreCase = true)) code else "$code · $country"
+}
+
+/** Diálogo con los idiomas detectados en el origen activo. */
+@Composable
+internal fun LanguagePickerDialog(
+    languages: List<Pair<String, Int>>,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.catalog_language_title)) },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                item(key = "all") {
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.catalog_language_all)) },
+                        trailingContent = {
+                            if (selected == null) {
+                                Icon(Icons.Filled.Check, contentDescription = null, tint = Carmine)
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable {
+                            onSelect(null)
+                            onDismiss()
+                        },
+                    )
+                }
+                items(languages, key = { it.first }) { (code, count) ->
+                    ListItem(
+                        headlineContent = { Text(languageLabel(code)) },
+                        trailingContent = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "$count",
+                                    color = MutedText,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                if (selected == code) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Icon(Icons.Filled.Check, contentDescription = null, tint = Carmine)
+                                }
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable {
+                            onSelect(code)
+                            onDismiss()
+                        },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.catalog_close))
+            }
+        },
+    )
 }

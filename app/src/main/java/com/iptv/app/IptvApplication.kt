@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.work.Configuration
 import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.common.sync.CatalogSyncScheduler
+import com.iptv.core.storage.db.LanguageBackfill
 import dagger.hilt.android.HiltAndroidApp
 import androidx.hilt.work.HiltWorkerFactory
 import javax.inject.Inject
@@ -20,6 +21,7 @@ class IptvApplication : Application(), Configuration.Provider {
     @Inject lateinit var syncScheduler: CatalogSyncScheduler
     @Inject lateinit var prefs: AppPreferences
     @Inject lateinit var crashReporter: CrashReporter
+    @Inject lateinit var languageBackfill: LanguageBackfill
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -40,5 +42,7 @@ class IptvApplication : Application(), Configuration.Provider {
         applicationScope.launch {
             prefs.crashReportingEnabled.collect { crashReporter.setEnabled(it) }
         }
+        // Rellena `language` en catálogos importados antes de la v6 (idempotente).
+        applicationScope.launch { languageBackfill.run() }
     }
 }

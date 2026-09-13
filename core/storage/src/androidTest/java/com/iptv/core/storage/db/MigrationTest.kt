@@ -42,11 +42,57 @@ class MigrationTest {
     }
 
     @Test
-    fun migrateAll_1to5() {
+    fun migrate5To6_addsLanguageColumnsKeepingData() {
+        helper.createDatabase(DB_NAME, 5).apply {
+            execSQL(
+                "INSERT INTO sources (id, type, name, isActive) VALUES (1, 'M3U_URL', 'S1', 1)",
+            )
+            execSQL(
+                "INSERT INTO categories (sourceId, externalId, kind, name, sortOrder, isLocked, hidden) " +
+                    "VALUES (1, 'g1', 'LIVE', 'ES - TDT', 0, 0, 0)",
+            )
+            execSQL(
+                "INSERT INTO channels (sourceId, externalId, name, nameNorm, streamUrl, kind, sortOrder, isFavorite) " +
+                    "VALUES (1, 'u1', 'La 1', 'la 1', 'http://x', 'LIVE', 0, 0)",
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(DB_NAME, 6, true, MIGRATION_5_6)
+
+        db.query("SELECT name, language FROM categories").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("ES - TDT", c.getString(0))
+            assertEquals("", c.getString(1))
+        }
+        db.query("SELECT name, language FROM channels").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("La 1", c.getString(0))
+            assertEquals("", c.getString(1))
+        }
+    }
+
+    @Test
+    fun migrate6To7_addsCatalogIndexes() {
+        helper.createDatabase(DB_NAME, 6).close()
+
+        val db = helper.runMigrationsAndValidate(DB_NAME, 7, true, MIGRATION_6_7)
+
+        db.query("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='channels'").use { c ->
+            val names = buildList { while (c.moveToNext()) add(c.getString(0)) }
+            assertTrue(names.contains("index_channels_sourceId_kind_sortOrder_name"))
+            assertTrue(names.contains("index_channels_sourceId_kind_nameNorm"))
+            assertTrue(names.contains("index_channels_sourceId_kind_language"))
+        }
+    }
+
+    @Test
+    fun migrateAll_1to7() {
         helper.createDatabase(DB_NAME, 1).close()
         helper.runMigrationsAndValidate(
-            DB_NAME, 5, true,
+            DB_NAME, 7, true,
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+            MIGRATION_5_6, MIGRATION_6_7,
         )
     }
 

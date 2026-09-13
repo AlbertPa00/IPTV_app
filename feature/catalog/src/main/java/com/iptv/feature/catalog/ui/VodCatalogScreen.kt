@@ -32,6 +32,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,8 +69,10 @@ fun VodCatalogScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val rows by viewModel.rows.collectAsStateWithLifecycle()
+    val languages by viewModel.languages.collectAsStateWithLifecycle()
     val content = viewModel.paging.collectAsLazyPagingItems()
     val kind = viewModel.kind
+    var showLanguagePicker by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().background(CinemaBlack)) {
         CatalogHeader(
@@ -90,12 +95,23 @@ fun VodCatalogScreen(
                 else -> BrowseMode(
                     rows = rows,
                     kind = kind,
+                    languages = languages,
+                    selectedLanguage = state.language,
+                    onLanguageClick = { showLanguagePicker = true },
                     onRowClick = viewModel::openGrid,
                     onItemClick = onItemClick,
                     onResumeItem = onResumeItem,
                     onToggleFavorite = viewModel::toggleFavorite,
                 )
             }
+        }
+        if (showLanguagePicker) {
+            LanguagePickerDialog(
+                languages = languages,
+                selected = state.language,
+                onSelect = viewModel::selectLanguage,
+                onDismiss = { showLanguagePicker = false },
+            )
         }
     }
 }
@@ -104,12 +120,15 @@ fun VodCatalogScreen(
 private fun BrowseMode(
     rows: List<VodCatalogViewModel.BrowseRow>,
     kind: ContentKind,
+    languages: List<Pair<String, Int>>,
+    selectedLanguage: String?,
+    onLanguageClick: () -> Unit,
     onRowClick: (VodCatalogViewModel.BrowseRow) -> Unit,
     onItemClick: (Long) -> Unit,
     onResumeItem: ((Long) -> Unit)?,
     onToggleFavorite: (ChannelEntity) -> Unit,
 ) {
-    if (rows.isEmpty()) {
+    if (rows.isEmpty() && languages.isEmpty()) {
         EmptyState(stringResource(emptyMessageFor(kind)))
         return
     }
@@ -119,6 +138,13 @@ private fun BrowseMode(
         verticalArrangement = Arrangement.spacedBy(20.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
+        if (languages.isNotEmpty()) {
+            item(key = "language") {
+                Box(Modifier.padding(horizontal = 16.dp)) {
+                    LanguageChip(selected = selectedLanguage, onClick = onLanguageClick)
+                }
+            }
+        }
         if (featured != null) {
             item(key = "featured") {
                 FeaturedHero(featured, onItemClick, onToggleFavorite)

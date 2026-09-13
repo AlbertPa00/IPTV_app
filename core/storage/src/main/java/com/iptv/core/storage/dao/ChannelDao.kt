@@ -38,6 +38,9 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     fun pagingBySource(sourceId: Long, kind: String): PagingSource<Int, ChannelEntity>
 
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND language = :language AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
+    fun pagingByLanguage(sourceId: Long, kind: String, language: String): PagingSource<Int, ChannelEntity>
+
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND categoryId = :categoryId AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     fun pagingByCategory(sourceId: Long, categoryId: Long): PagingSource<Int, ChannelEntity>
 
@@ -62,11 +65,29 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
     fun observeTopByKind(sourceId: Long, kind: String, limit: Int): Flow<List<ChannelEntity>>
 
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND language = :language AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
+    fun observeTopByLanguage(sourceId: Long, kind: String, language: String, limit: Int): Flow<List<ChannelEntity>>
+
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND categoryId = :categoryId AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
+    fun observeTopInCategory(sourceId: Long, kind: String, categoryId: Long, limit: Int): Flow<List<ChannelEntity>>
+
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND nameNorm LIKE '%' || :query || '%' ESCAPE '\\' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
     fun searchTop(sourceId: Long, kind: String, query: String, limit: Int): Flow<List<ChannelEntity>>
 
     @Query("UPDATE channels SET isFavorite = :favorite WHERE id = :id")
     suspend fun setFavorite(id: Long, favorite: Boolean)
+
+    @Query("UPDATE channels SET language = (SELECT language FROM categories WHERE categories.id = channels.categoryId) WHERE categoryId IS NOT NULL AND language = ''")
+    suspend fun propagateLanguageFromCategories(): Int
+
+    @Query("SELECT EXISTS(SELECT 1 FROM channels WHERE language = '' LIMIT 1)")
+    suspend fun hasWithoutLanguage(): Boolean
+
+    @Query("SELECT id, name FROM channels WHERE language = ''")
+    suspend fun withoutLanguage(): List<ChannelIdName>
+
+    @Query("UPDATE channels SET language = :language WHERE id IN (:ids)")
+    suspend fun setLanguageForIds(ids: List<Long>, language: String)
 
     @Query("SELECT externalId FROM channels WHERE sourceId = :sourceId AND isFavorite = 1")
     suspend fun favoriteExternalIds(sourceId: Long): List<String>
@@ -92,3 +113,6 @@ interface ChannelDao {
     @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = :kind AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     suspend fun channelIds(sourceId: Long, kind: String): List<Long>
 }
+
+/** Proyección ligera para el backfill de idioma (sin cargar la entidad completa). */
+data class ChannelIdName(val id: Long, val name: String)

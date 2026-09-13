@@ -33,6 +33,8 @@ dependencies {
     api(libs.room.paging)
     api(libs.paging.runtime)
 
+    implementation(project(":core:common"))
+
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     ksp(libs.room.compiler)

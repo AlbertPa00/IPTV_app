@@ -42,6 +42,10 @@ interface ProgrammeDao {
     @Query("DELETE FROM programmes WHERE endUtc < :beforeUtc")
     suspend fun purgeEndedBefore(beforeUtc: Long): Int
 
+    /** true si el origen tiene al menos un programa (EPG) importado. */
+    @Query("SELECT EXISTS(SELECT 1 FROM programmes WHERE sourceId = :sourceId LIMIT 1)")
+    fun observeHasProgrammes(sourceId: Long): Flow<Boolean>
+
     @Query("SELECT * FROM programmes WHERE sourceId = :sourceId AND channelKey = :channelKey AND startUtc <= :atUtc AND endUtc > :atUtc ORDER BY startUtc DESC LIMIT 1")
     fun observeCurrent(sourceId: Long, channelKey: String, atUtc: Long): Flow<ProgrammeEntity?>
 
@@ -73,6 +77,10 @@ interface ProgrammeDao {
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE'
           AND (c.categoryId IS NULL OR c.categoryId NOT IN
               (SELECT id FROM categories WHERE isLocked = 1 OR hidden = 1))
+          AND EXISTS (
+              SELECT 1 FROM programmes px WHERE px.sourceId = c.sourceId
+                AND (px.channelKey = c.tvgId OR px.channelNameNorm = c.nameNorm)
+          )
         ORDER BY c.sortOrder, c.name
         """
     )

@@ -143,6 +143,11 @@ fun PlayerScreen(
     var scrubFraction by remember { mutableStateOf<Float?>(null) }
     var channelListVisible by remember { mutableStateOf(false) }
     val channelList by viewModel.channelList.collectAsStateWithLifecycle()
+    val hasChannelList by viewModel.hasChannelList.collectAsStateWithLifecycle()
+
+    LaunchedEffect(channelListVisible) {
+        if (channelListVisible) viewModel.requestChannelList()
+    }
     val isInPipMode by viewModel.isInPipMode.collectAsStateWithLifecycle()
     val castVolume by viewModel.castVolume.collectAsStateWithLifecycle()
     val castMuted by viewModel.castMuted.collectAsStateWithLifecycle()
@@ -446,158 +451,164 @@ fun PlayerScreen(
                     ),
                 )
 
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth().statusBarsPadding()
                         .padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.size(48.dp).clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.45f)),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.player_back),
-                            tint = Color.White,
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier.size(48.dp).clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.45f)),
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.player_back),
+                                tint = Color.White,
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Box(Modifier.size(6.dp, 36.dp).clip(CircleShape).background(PlayerCarmine))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = state.channel?.name.orEmpty(),
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            PlayerStatus(state)
+                        }
+                        IconButton(
+                            onClick = {
+                                controlsVisible = true
+                                viewModel.toggleFavorite()
+                            },
+                            modifier = Modifier.size(48.dp).clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.45f)),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Star,
+                                contentDescription = stringResource(
+                                    if (state.channel?.isFavorite == true) {
+                                        R.string.player_favorite_remove
+                                    } else {
+                                        R.string.player_favorite_add
+                                    },
+                                ),
+                                tint = if (state.channel?.isFavorite == true) PlayerCarmine else Color.White,
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        IconButton(
+                            onClick = {
+                                controlsVisible = true
+                                sleepDialogVisible = true
+                            },
+                            modifier = Modifier.size(48.dp).clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.45f)),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Bedtime,
+                                contentDescription = stringResource(R.string.player_sleep_timer),
+                                tint = if (state.sleepTimerEndAtMs != null) PlayerCarmine else Color.White,
+                            )
+                        }
                     }
-                    Spacer(Modifier.width(12.dp))
-                    Box(Modifier.size(6.dp, 36.dp).clip(CircleShape).background(PlayerCarmine))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = state.channel?.name.orEmpty(),
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        PlayerStatus(state)
-                    }
-                    IconButton(
-                        onClick = {
-                            controlsVisible = true
-                            viewModel.toggleFavorite()
-                        },
-                        modifier = Modifier.size(48.dp).clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.45f)),
+                    // Segunda fila: acciones secundarias — deja espacio real al
+                    // título en pantallas estrechas (antes se aplastaba).
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Star,
-                            contentDescription = stringResource(
-                                if (state.channel?.isFavorite == true) {
-                                    R.string.player_favorite_remove
-                                } else {
-                                    R.string.player_favorite_add
+                        if (state.isLive && hasChannelList) {
+                            IconButton(
+                                onClick = {
+                                    controlsVisible = true
+                                    channelListVisible = !channelListVisible
                                 },
-                            ),
-                            tint = if (state.channel?.isFavorite == true) PlayerCarmine else Color.White,
+                                modifier = Modifier.size(48.dp).clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.45f)),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.List,
+                                    contentDescription = stringResource(R.string.player_channel_list),
+                                    tint = Color.White,
+                                )
+                            }
+                            Spacer(Modifier.width(4.dp))
+                        }
+                        if (!state.isCasting) {
+                            IconButton(
+                                onClick = {
+                                    controlsVisible = true
+                                    tracksDialogVisible = true
+                                },
+                                modifier = Modifier.size(48.dp).clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.45f)),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Subtitles,
+                                    contentDescription = stringResource(R.string.player_tracks),
+                                    tint = Color.White,
+                                )
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            IconButton(
+                                onClick = {
+                                    controlsVisible = true
+                                    resizeMode = when (resizeMode) {
+                                        AspectRatioFrameLayout.RESIZE_MODE_FIT ->
+                                            AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                        AspectRatioFrameLayout.RESIZE_MODE_FILL ->
+                                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                        else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                    }
+                                },
+                                modifier = Modifier.size(48.dp).clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.45f)),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.AspectRatio,
+                                    contentDescription = stringResource(R.string.player_aspect_ratio),
+                                    tint = Color.White,
+                                )
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            IconButton(
+                                onClick = { activity?.enterPip() },
+                                modifier = Modifier.size(48.dp).clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.45f)),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PictureInPictureAlt,
+                                    contentDescription = stringResource(R.string.player_pip),
+                                    tint = Color.White,
+                                )
+                            }
+                            Spacer(Modifier.width(4.dp))
+                        }
+                        CastRouteButton(
+                            contentDescription = stringResource(R.string.player_cast),
+                            modifier = Modifier.size(48.dp),
                         )
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    IconButton(
-                        onClick = {
-                            controlsVisible = true
-                            sleepDialogVisible = true
-                        },
-                        modifier = Modifier.size(48.dp).clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.45f)),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Bedtime,
-                            contentDescription = stringResource(R.string.player_sleep_timer),
-                            tint = if (state.sleepTimerEndAtMs != null) PlayerCarmine else Color.White,
-                        )
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    if (!state.isCasting) {
+                        Spacer(Modifier.width(4.dp))
                         IconButton(
-                            onClick = { activity?.enterPip() },
+                            onClick = { fullscreen = !fullscreen },
                             modifier = Modifier.size(48.dp).clip(CircleShape)
                                 .background(Color.Black.copy(alpha = 0.45f)),
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.PictureInPictureAlt,
-                                contentDescription = stringResource(R.string.player_pip),
+                                imageVector = if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                                contentDescription = stringResource(
+                                    if (fullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
+                                ),
                                 tint = Color.White,
                             )
                         }
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    if (state.isLive && channelList.isNotEmpty()) {
-                        IconButton(
-                            onClick = {
-                                controlsVisible = true
-                                channelListVisible = !channelListVisible
-                            },
-                            modifier = Modifier.size(48.dp).clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.45f)),
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.List,
-                                contentDescription = stringResource(R.string.player_channel_list),
-                                tint = Color.White,
-                            )
-                        }
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    if (!state.isCasting) {
-                        IconButton(
-                            onClick = {
-                                controlsVisible = true
-                                tracksDialogVisible = true
-                            },
-                            modifier = Modifier.size(48.dp).clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.45f)),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Subtitles,
-                                contentDescription = stringResource(R.string.player_tracks),
-                                tint = Color.White,
-                            )
-                        }
-                        Spacer(Modifier.width(4.dp))
-                        IconButton(
-                            onClick = {
-                                controlsVisible = true
-                                resizeMode = when (resizeMode) {
-                                    AspectRatioFrameLayout.RESIZE_MODE_FIT ->
-                                        AspectRatioFrameLayout.RESIZE_MODE_FILL
-                                    AspectRatioFrameLayout.RESIZE_MODE_FILL ->
-                                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                                    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                }
-                            },
-                            modifier = Modifier.size(48.dp).clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.45f)),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.AspectRatio,
-                                contentDescription = stringResource(R.string.player_aspect_ratio),
-                                tint = Color.White,
-                            )
-                        }
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    CastRouteButton(
-                        contentDescription = stringResource(R.string.player_cast),
-                        modifier = Modifier.size(48.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    IconButton(
-                        onClick = { fullscreen = !fullscreen },
-                        modifier = Modifier.size(48.dp).clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.45f)),
-                    ) {
-                        Icon(
-                            imageVector = if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                            contentDescription = stringResource(
-                                if (fullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
-                            ),
-                            tint = Color.White,
-                        )
                     }
                 }
 

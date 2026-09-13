@@ -49,4 +49,10 @@ interface CategoryDao {
 
     @Query("DELETE FROM categories WHERE sourceId = :sourceId AND kind NOT IN (:keptKinds)")
     suspend fun deleteBySourceExceptKinds(sourceId: Long, keptKinds: Collection<String>)
+
+    @Query("SELECT * FROM categories WHERE language = ''")
+    suspend fun withoutLanguage(): List<CategoryEntity>
+
+    @Query("UPDATE categories SET language = :language WHERE id = :id")
+    suspend fun setLanguage(id: Long, language: String)
 }

@@ -37,4 +37,24 @@
     <string name="details_genre">Genre</string>
     <string name="details_country">Country</string>
     <string name="details_not_found">Content unavailable</string>
+    <string name="catalog_language">Language</string>
+    <string name="catalog_language_title">Filter by language</string>
+    <string name="catalog_language_all">All languages</string>
+    <string name="catalog_close">Close</string>
+    <string name="lang_ar">Arabic</string>
+    <string name="lang_la">Latin America</string>
+    <string name="lang_exyu">Ex-Yugoslavia</string>
+    <string name="lang_asia">Asia</string>
+    <string name="lang_afr">Africa</string>
+    <string name="lang_scandi">Scandinavia</string>
+    <string name="lang_ku">Kurdish</string>
+    <string name="lang_int">International</string>
+    <string name="lang_world">World</string>
+    <string name="lang_eu">Europe</string>
+    <string name="lang_en">English</string>
+    <string name="lang_nf">Netflix</string>
+    <string name="lang_mv">Music</string>
+    <string name="lang_mc">Music</string>
+    <string name="lang_rx">Relax</string>
+    <string name="lang_as">Asia</string>
 </resources>

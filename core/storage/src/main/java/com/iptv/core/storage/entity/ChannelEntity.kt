@@ -11,6 +11,12 @@ import androidx.room.PrimaryKey
         Index("categoryId"),
         Index("nameNorm"),
         Index(value = ["sourceId", "externalId"], unique = true),
+        // Las consultas del catálogo filtran por (sourceId, kind) y ordenan por
+        // sortOrder/name; sin estos índices compuestos cada página hace filesort
+        // sobre ~200k filas.
+        Index(value = ["sourceId", "kind", "sortOrder", "name"]),
+        Index(value = ["sourceId", "kind", "nameNorm"]),
+        Index(value = ["sourceId", "kind", "language"]),
     ],
 )
 data class ChannelEntity(
@@ -31,4 +37,6 @@ data class ChannelEntity(
     val containerExt: String? = null,
     val sortOrder: Int = 0,
     val isFavorite: Boolean = false,
+    /** Idioma/país detectado (prefijo de categoría/canal o alfabeto); "" = sin señal. */
+    val language: String = "",
 )

@@ -10,6 +10,8 @@ data class ParsedChannel(
     val tvgName: String? = null,
     val tvgLogo: String? = null,
     val groupTitle: String? = null,
+    val tvgCountry: String? = null,
+    val tvgLanguage: String? = null,
     val contentType: String? = null,
     val userAgent: String? = null,
     val referrer: String? = null,
@@ -92,6 +94,8 @@ class M3uParser {
             tvgName = attrs["tvg-name"],
             tvgLogo = attrs["tvg-logo"],
             groupTitle = attrs["group-title"],
+            tvgCountry = attrs["tvg-country"],
+            tvgLanguage = attrs["tvg-language"],
             contentType = attrs["tvg-type"] ?: attrs["media-type"] ?: attrs["type"],
         )
     }

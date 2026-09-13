@@ -21,7 +21,7 @@ import com.iptv.core.storage.entity.SourceEntity
         ProgrammeEntity::class,
         PlaybackHistoryEntity::class,
     ],
-    version = 5,
+    version = 7,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

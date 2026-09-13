@@ -52,6 +52,7 @@ class LiveTvViewModel @Inject constructor(
         val query: String = "",
         val favoritesOnly: Boolean = false,
         val categoryId: Long? = null,
+        val language: String? = null,
     )
 
     private val _filters = MutableStateFlow(Filters())
@@ -64,6 +65,17 @@ class LiveTvViewModel @Inject constructor(
         .flatMapLatest { source ->
             if (source == null) flowOf(emptyList())
             else categoryDao.observeBySource(source.id, ContentKind.TV.storageValue)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Idiomas detectados en las categorías del origen activo (orden por nº de grupos). */
+    val languages: StateFlow<List<Pair<String, Int>>> = categories
+        .map { cats ->
+            cats.mapNotNull { it.language.takeIf(String::isNotBlank) }
+                .groupingBy { it }
+                .eachCount()
+                .entries.sortedByDescending { it.value }
+                .map { it.key to it.value }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -80,8 +92,17 @@ class LiveTvViewModel @Inject constructor(
             if (source == null) {
                 flowOf(emptyMap())
             } else {
-                clock.flatMapLatest { now -> programmeDao.observeGuide(source.id, now) }
-                    .map { rows -> rows.associateBy(GuideRow::channelId) }
+                // La consulta de guía hace subconsultas por canal; si el origen
+                // no tiene EPG (habitual en Xtream) no merece ni empezarla.
+                programmeDao.observeHasProgrammes(source.id)
+                    .flatMapLatest { has ->
+                        if (!has) {
+                            flowOf(emptyMap())
+                        } else {
+                            clock.flatMapLatest { now -> programmeDao.observeGuide(source.id, now) }
+                                .map { rows -> rows.associateBy(GuideRow::channelId) }
+                        }
+                    }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
@@ -117,6 +138,11 @@ class LiveTvViewModel @Inject constructor(
                             source.id,
                             filters.categoryId,
                         )
+                        filters.language != null -> channelDao.pagingByLanguage(
+                            source.id,
+                            ContentKind.TV.storageValue,
+                            filters.language,
+                        )
                         else -> channelDao.pagingBySource(source.id, ContentKind.TV.storageValue)
                     }
                 }.flow
@@ -125,15 +151,19 @@ class LiveTvViewModel @Inject constructor(
         .cachedIn(viewModelScope)
 
     fun selectAll() {
-        _filters.update { it.copy(favoritesOnly = false, categoryId = null, query = "") }
+        _filters.update { it.copy(favoritesOnly = false, categoryId = null, language = null, query = "") }
     }
 
     fun selectFavorites() {
-        _filters.update { it.copy(favoritesOnly = true, categoryId = null, query = "") }
+        _filters.update { it.copy(favoritesOnly = true, categoryId = null, language = null, query = "") }
     }
 
     fun selectCategory(categoryId: Long) {
         _filters.update { it.copy(favoritesOnly = false, categoryId = categoryId, query = "") }
+    }
+
+    fun selectLanguage(language: String?) {
+        _filters.update { it.copy(language = language, favoritesOnly = false, categoryId = null, query = "") }
     }
 
     fun onQueryChange(query: String) {

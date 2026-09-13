@@ -121,6 +121,7 @@ class VodCatalogViewModel @Inject constructor(
     data class UiState(
         val query: String = "",
         val grid: Grid? = null,
+        val language: String? = null,
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -136,27 +137,57 @@ class VodCatalogViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val rows: StateFlow<List<BrowseRow>> = combine(activeSource, categories) { s, c -> s to c }
+    /** Idiomas detectados en las categorías del origen activo (orden por nº de grupos). */
+    val languages: StateFlow<List<Pair<String, Int>>> = categories
+        .map { cats ->
+            cats.mapNotNull { it.language.takeIf(String::isNotBlank) }
+                .groupingBy { it }
+                .eachCount()
+                .entries.sortedByDescending { it.value }
+                .map { it.key to it.value }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val language: StateFlow<String?> = _uiState
+        .map { it.language }
         .distinctUntilChanged()
-        .flatMapLatest { (source, cats) -> browseRows(source, cats) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val rows: StateFlow<List<BrowseRow>> = combine(activeSource, categories, language, ::Triple)
+        .distinctUntilChanged()
+        .flatMapLatest { (source, cats, lang) -> browseRows(source, cats, lang) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private fun browseRows(
         source: SourceEntity?,
         cats: List<CategoryEntity>,
+        lang: String?,
     ): Flow<List<BrowseRow>> {
         if (source == null) return flowOf(emptyList())
         val kind = kind.storageValue
+        // Con idioma seleccionado los carruseles se limitan a ese idioma.
+        val visibleCats = if (lang == null) cats else cats.filter { it.language == lang }
         val continueWatching =
             playbackHistoryDao.observeContinueWatching(source.id, kind, CONTINUE_ROW_LIMIT)
         val favorites = channelDao.observeTopFavorites(source.id, kind, FAVORITES_ROW_LIMIT)
-        val rest: Flow<List<BrowseRow>> = if (cats.isEmpty()) {
-            channelDao.observeTopByKind(source.id, kind, ROW_LIMIT).map { items ->
+        val rest: Flow<List<BrowseRow>> = if (visibleCats.isEmpty()) {
+            val top = if (lang == null) {
+                channelDao.observeTopByKind(source.id, kind, ROW_LIMIT)
+            } else {
+                channelDao.observeTopByLanguage(source.id, kind, lang, ROW_LIMIT)
+            }
+            top.map { items ->
                 if (items.isEmpty()) emptyList() else listOf(BrowseRow.All.of(items))
             }
         } else {
-            val perCategory = cats.map { category ->
-                channelDao.observeTopByCategory(category.id, ROW_LIMIT).map { category to it }
+            // Se limitan los carruseles: un Flow por categoría con cientos de
+            // grupos re-dispara cientos de consultas ante cada escritura en
+            // `channels` (favorito, sync…). Con el índice (sourceId, kind,
+            // sortOrder, name) cada consulta es una lectura de índice rápida y
+            // nadie necesita 400 carruseles en pantalla.
+            val perCategory = visibleCats.take(MAX_BROWSE_CATEGORIES).map { category ->
+                channelDao.observeTopInCategory(source.id, kind, category.id, ROW_LIMIT)
+                    .map { category to it }
             }
             combine(
                 combine(perCategory) { it.toList() },
@@ -168,7 +199,9 @@ class VodCatalogViewModel @Inject constructor(
                             add(BrowseRow.Category.of(category.id, category.name, items))
                         }
                     }
-                    if (uncategorized.isNotEmpty()) add(BrowseRow.Uncategorized.of(uncategorized))
+                    if (lang == null && uncategorized.isNotEmpty()) {
+                        add(BrowseRow.Uncategorized.of(uncategorized))
+                    }
                 }
             }
         }
@@ -207,6 +240,12 @@ class VodCatalogViewModel @Inject constructor(
                             is Grid.ContinueWatching ->
                                 playbackHistoryDao.pagingContinueWatching(source.id, kind)
                             is Grid.Uncategorized -> channelDao.pagingUncategorized(source.id, kind)
+                            is Grid.All ->
+                                if (state.language != null) {
+                                    channelDao.pagingByLanguage(source.id, kind, state.language)
+                                } else {
+                                    channelDao.pagingBySource(source.id, kind)
+                                }
                             else -> channelDao.pagingBySource(source.id, kind)
                         }
                     }
@@ -216,7 +255,11 @@ class VodCatalogViewModel @Inject constructor(
         .cachedIn(viewModelScope)
 
     fun onQueryChange(query: String) {
-        _uiState.update { UiState(query = query.trimStart()) }
+        _uiState.update { UiState(query = query.trimStart(), language = it.language) }
+    }
+
+    fun selectLanguage(language: String?) {
+        _uiState.update { it.copy(language = language) }
     }
 
     fun openGrid(row: BrowseRow) {
@@ -237,5 +280,6 @@ class VodCatalogViewModel @Inject constructor(
         const val ROW_LIMIT = 14
         const val FAVORITES_ROW_LIMIT = 20
         const val CONTINUE_ROW_LIMIT = 12
+        const val MAX_BROWSE_CATEGORIES = 60
     }
 }

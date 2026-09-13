@@ -31,7 +31,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,8 +71,10 @@ fun LiveTvScreen(
 ) {
     val filters by viewModel.filters.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
+    val languages by viewModel.languages.collectAsStateWithLifecycle()
     val guideByChannel by viewModel.guideByChannel.collectAsStateWithLifecycle()
     val content = viewModel.channels.collectAsLazyPagingItems()
+    var showLanguagePicker by remember { mutableStateOf(false) }
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
             delay(30_000)
@@ -87,12 +92,25 @@ fun LiveTvScreen(
         )
         if (filters.query.isBlank()) {
             LiveFilterRail(
-                categories = categories,
+                categories = categories.filter {
+                    filters.language == null || it.language == filters.language
+                },
+                languages = languages,
+                selectedLanguage = filters.language,
                 favoritesOnly = filters.favoritesOnly,
                 selectedCategoryId = filters.categoryId,
                 onSelectFavorites = viewModel::selectFavorites,
                 onSelectAll = viewModel::selectAll,
                 onSelectCategory = viewModel::selectCategory,
+                onLanguageClick = { showLanguagePicker = true },
+            )
+        }
+        if (showLanguagePicker) {
+            LanguagePickerDialog(
+                languages = languages,
+                selected = filters.language,
+                onSelect = viewModel::selectLanguage,
+                onDismiss = { showLanguagePicker = false },
             )
         }
         Box(Modifier.weight(1f)) {
@@ -109,17 +127,25 @@ fun LiveTvScreen(
 @Composable
 private fun LiveFilterRail(
     categories: List<CategoryEntity>,
+    languages: List<Pair<String, Int>>,
+    selectedLanguage: String?,
     favoritesOnly: Boolean,
     selectedCategoryId: Long?,
     onSelectFavorites: () -> Unit,
     onSelectAll: () -> Unit,
     onSelectCategory: (Long) -> Unit,
+    onLanguageClick: () -> Unit,
 ) {
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
+        if (languages.isNotEmpty()) {
+            item(key = "language") {
+                LanguageChip(selected = selectedLanguage, onClick = onLanguageClick)
+            }
+        }
         item(key = "favorites") {
             CategoryChip(
                 label = stringResource(R.string.catalog_favorites),
@@ -137,7 +163,7 @@ private fun LiveFilterRail(
         item(key = "all") {
             CategoryChip(
                 label = stringResource(R.string.catalog_all),
-                selected = !favoritesOnly && selectedCategoryId == null,
+                selected = !favoritesOnly && selectedCategoryId == null && selectedLanguage == null,
                 onClick = onSelectAll,
             )
         }

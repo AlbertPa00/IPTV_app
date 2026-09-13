@@ -112,6 +112,20 @@ class PlayerViewModel @Inject constructor(
     private val _channelList = MutableStateFlow<List<ChannelEntity>>(emptyList())
     val channelList: StateFlow<List<ChannelEntity>> = _channelList.asStateFlow()
 
+    private val _hasChannelList = MutableStateFlow(false)
+    val hasChannelList: StateFlow<Boolean> = _hasChannelList.asStateFlow()
+    private var channelListRequested = false
+
+    /** Carga perezosa de la lista de canales: solo cuando el panel se abre. */
+    fun requestChannelList() {
+        if (channelListRequested) return
+        channelListRequested = true
+        val sourceId = _uiState.value.channel?.sourceId ?: return
+        viewModelScope.launch {
+            _channelList.value = channelDao.liveBySource(sourceId)
+        }
+    }
+
     private val _castVolume = MutableStateFlow(1f)
     val castVolume: StateFlow<Float> = _castVolume.asStateFlow()
     private val _castMuted = MutableStateFlow(false)
@@ -271,9 +285,10 @@ class PlayerViewModel @Inject constructor(
             return
         }
         if (channel.kind == Kinds.LIVE) {
-            val liveChannels = channelDao.liveBySource(channel.sourceId)
-            _channelList.value = liveChannels
-            channelOrder = liveChannels.map { it.id }
+            // Solo ids para el zapping: cargar ~50k entidades completas por cada
+            // apertura del reproductor era el mayor coste del arranque.
+            channelOrder = channelDao.channelIds(channel.sourceId, Kinds.LIVE)
+            _hasChannelList.value = channelOrder.size > 1
         }
         val isLive = channel.kind == Kinds.LIVE
         _uiState.update { it.copy(channel = channel, isLive = isLive) }

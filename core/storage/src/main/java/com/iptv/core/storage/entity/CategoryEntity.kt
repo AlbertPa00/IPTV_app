@@ -9,6 +9,7 @@ import androidx.room.PrimaryKey
     indices = [
         Index("sourceId"),
         Index(value = ["sourceId", "externalId"], unique = true),
+        Index(value = ["sourceId", "kind"]),
     ],
 )
 data class CategoryEntity(
@@ -23,6 +24,8 @@ data class CategoryEntity(
     val isLocked: Boolean = false,
     /** Categoría oculta por el usuario (ordenación/visibilidad del catálogo). */
     val hidden: Boolean = false,
+    /** Idioma/país detectado del nombre ("ES", "AR", "US"…); "" = sin señal. */
+    val language: String = "",
 )
 
 object Kinds {
