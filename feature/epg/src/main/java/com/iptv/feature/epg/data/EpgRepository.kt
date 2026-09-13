@@ -4,7 +4,6 @@ import androidx.room.withTransaction
 import com.iptv.core.common.dispatchers.AppDispatchers
 import com.iptv.core.network.DEFAULT_USER_AGENT
 import com.iptv.core.storage.dao.ChannelDao
-import com.iptv.core.storage.dao.GuideRow
 import com.iptv.core.storage.dao.ProgrammeDao
 import com.iptv.core.storage.dao.SourceDao
 import com.iptv.core.storage.db.AppDatabase
@@ -45,9 +44,6 @@ class EpgRepository @Inject constructor(
     private val crypto: CredentialCrypto,
     private val dispatchers: AppDispatchers,
 ) {
-    fun observeGuide(sourceId: Long, atUtc: Long): Flow<List<GuideRow>> =
-        programmeDao.observeGuide(sourceId, atUtc)
-
     fun syncActive(): Flow<EpgSyncState> = channelFlow {
         val source = sourceDao.observeActive().firstOrNull() ?: run {
             send(EpgSyncState.Failed(EpgSyncState.Reason.NO_SOURCE)); return@channelFlow

@@ -12,9 +12,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -35,8 +37,16 @@ class GuideViewModel @Inject constructor(
 
     val guide: StateFlow<List<GuideRow>> = sourceDao.observeActive()
         .flatMapLatest { source ->
-            if (source == null) flowOf(emptyList())
-            else clock.flatMapLatest { now -> programmeDao.observeGuide(source.id, now) }
+            if (source == null) {
+                flowOf(emptyList())
+            } else {
+                programmeDao.observeHasProgrammes(source.id)
+                    .distinctUntilChanged()
+                    .flatMapLatest { has ->
+                        if (!has) flowOf(emptyList())
+                        else clock.map { now -> programmeDao.guideSnapshot(source.id, now) }
+                    }
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 

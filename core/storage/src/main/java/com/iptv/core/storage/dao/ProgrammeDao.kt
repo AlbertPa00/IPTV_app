@@ -8,6 +8,24 @@ import androidx.room.Transaction
 import com.iptv.core.storage.entity.ProgrammeEntity
 import kotlinx.coroutines.flow.Flow
 
+/** Canal reducido para componer la guía en memoria. */
+data class GuideChannelRow(
+    val id: Long,
+    val name: String,
+    val logoUrl: String?,
+    val tvgId: String?,
+    val nameNorm: String,
+)
+
+/** Próximo programa por canal EPG (channelKey) con su nombre alternativo. */
+data class GuideNextRow(
+    val channelKey: String,
+    val channelNameNorm: String,
+    val startUtc: Long,
+    val endUtc: Long,
+    val title: String,
+)
+
 /** A channel plus its current and next programme, used by guide UIs. */
 data class GuideRow(
     val channelId: Long,
@@ -54,35 +72,85 @@ interface ProgrammeDao {
 
     @Query(
         """
-        SELECT c.id AS channelId, c.name AS channelName, c.logoUrl AS channelLogoUrl,
-               c.tvgId AS channelTvgId,
-               p.id AS currentId, p.title AS currentTitle, p.description AS currentDescription,
-               p.startUtc AS currentStartUtc, p.endUtc AS currentEndUtc, p.iconUrl AS currentIconUrl,
-               (SELECT n.title FROM programmes n WHERE n.sourceId = c.sourceId
-                    AND (n.channelKey = c.tvgId OR n.channelNameNorm = c.nameNorm)
-                    AND n.startUtc >= :atUtc ORDER BY n.startUtc LIMIT 1) AS nextTitle,
-               (SELECT n.startUtc FROM programmes n WHERE n.sourceId = c.sourceId
-                    AND (n.channelKey = c.tvgId OR n.channelNameNorm = c.nameNorm)
-                    AND n.startUtc >= :atUtc ORDER BY n.startUtc LIMIT 1) AS nextStartUtc,
-               (SELECT n.endUtc FROM programmes n WHERE n.sourceId = c.sourceId
-                    AND (n.channelKey = c.tvgId OR n.channelNameNorm = c.nameNorm)
-                    AND n.startUtc >= :atUtc ORDER BY n.startUtc LIMIT 1) AS nextEndUtc
+        SELECT c.id AS id, c.name AS name, c.logoUrl AS logoUrl,
+               c.tvgId AS tvgId, c.nameNorm AS nameNorm
         FROM channels c
-        LEFT JOIN programmes p ON p.id = (
-            SELECT cp.id FROM programmes cp WHERE cp.sourceId = c.sourceId
-              AND (cp.channelKey = c.tvgId OR cp.channelNameNorm = c.nameNorm)
-              AND cp.startUtc <= :atUtc AND cp.endUtc > :atUtc
-            ORDER BY cp.startUtc DESC LIMIT 1
-        )
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE'
           AND (c.categoryId IS NULL OR c.categoryId NOT IN
               (SELECT id FROM categories WHERE isLocked = 1 OR hidden = 1))
-          AND EXISTS (
-              SELECT 1 FROM programmes px WHERE px.sourceId = c.sourceId
-                AND (px.channelKey = c.tvgId OR px.channelNameNorm = c.nameNorm)
-          )
         ORDER BY c.sortOrder, c.name
         """
     )
-    fun observeGuide(sourceId: Long, atUtc: Long): Flow<List<GuideRow>>
+    suspend fun guideChannels(sourceId: Long): List<GuideChannelRow>
+
+    @Query(
+        """
+        SELECT * FROM programmes
+        WHERE sourceId = :sourceId
+          AND startUtc <= :atUtc AND startUtc >= :atUtc - 86400000
+          AND endUtc > :atUtc
+        """
+    )
+    suspend fun currentProgrammes(sourceId: Long, atUtc: Long): List<ProgrammeEntity>
+
+    @Query(
+        """
+        SELECT channelKey, channelNameNorm,
+               MIN(startUtc) AS startUtc, endUtc, title
+        FROM programmes
+        WHERE sourceId = :sourceId AND startUtc > :atUtc AND startUtc <= :atUtc + 86400000
+        GROUP BY channelKey
+        """
+    )
+    suspend fun nextProgrammes(sourceId: Long, atUtc: Long): List<GuideNextRow>
+
+    /**
+     * Guía completa sin subconsultas por canal: tres consultas indexadas y el
+     * emparejamiento en memoria. Los programas casan por tvgId (channelKey) o
+     * por nombre normalizado (channelNameNorm), como hacía la consulta previa.
+     */
+    suspend fun guideSnapshot(sourceId: Long, atUtc: Long): List<GuideRow> {
+        val channels = guideChannels(sourceId)
+        if (channels.isEmpty()) return emptyList()
+        val current = currentProgrammes(sourceId, atUtc)
+        val next = nextProgrammes(sourceId, atUtc)
+        if (current.isEmpty() && next.isEmpty()) return emptyList()
+
+        val curByKey = HashMap<String, ProgrammeEntity>(current.size)
+        val curByName = HashMap<String, ProgrammeEntity>(current.size)
+        for (p in current) {
+            curByKey.merge(p.channelKey, p) { a, b -> if (b.startUtc >= a.startUtc) b else a }
+            curByName.merge(p.channelNameNorm, p) { a, b -> if (b.startUtc >= a.startUtc) b else a }
+        }
+        val nextByKey = HashMap<String, GuideNextRow>(next.size)
+        val nextByName = HashMap<String, GuideNextRow>(next.size)
+        for (n in next) {
+            nextByKey[n.channelKey] = n
+            nextByName[n.channelNameNorm] = n
+        }
+
+        return channels.mapNotNull { c ->
+            val cur = c.tvgId?.let(curByKey::get) ?: curByName[c.nameNorm]
+            val nxt = c.tvgId?.let(nextByKey::get) ?: nextByName[c.nameNorm]
+            if (cur == null && nxt == null) {
+                null
+            } else {
+                GuideRow(
+                    channelId = c.id,
+                    channelName = c.name,
+                    channelLogoUrl = c.logoUrl,
+                    channelTvgId = c.tvgId,
+                    currentId = cur?.id,
+                    currentTitle = cur?.title,
+                    currentDescription = cur?.description,
+                    currentStartUtc = cur?.startUtc,
+                    currentEndUtc = cur?.endUtc,
+                    currentIconUrl = cur?.iconUrl,
+                    nextTitle = nxt?.title,
+                    nextStartUtc = nxt?.startUtc,
+                    nextEndUtc = nxt?.endUtc,
+                )
+            }
+        }
+    }
 }

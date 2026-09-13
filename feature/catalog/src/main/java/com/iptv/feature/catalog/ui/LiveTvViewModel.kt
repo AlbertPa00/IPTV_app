@@ -92,15 +92,19 @@ class LiveTvViewModel @Inject constructor(
             if (source == null) {
                 flowOf(emptyMap())
             } else {
-                // La consulta de guía hace subconsultas por canal; si el origen
-                // no tiene EPG (habitual en Xtream) no merece ni empezarla.
+                // La guía se compone con consultas agregadas + join en memoria
+                // (guideSnapshot); el EXISTS evita lanzarla en orígenes sin EPG
+                // y distinctUntilChanged frena los re-disparos durante importaciones.
                 programmeDao.observeHasProgrammes(source.id)
+                    .distinctUntilChanged()
                     .flatMapLatest { has ->
                         if (!has) {
                             flowOf(emptyMap())
                         } else {
-                            clock.flatMapLatest { now -> programmeDao.observeGuide(source.id, now) }
-                                .map { rows -> rows.associateBy(GuideRow::channelId) }
+                            clock.map { now ->
+                                programmeDao.guideSnapshot(source.id, now)
+                                    .associateBy(GuideRow::channelId)
+                            }
                         }
                     }
             }
