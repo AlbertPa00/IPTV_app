@@ -71,3 +71,12 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_categories_sourceId_kind` ON `categories` (`sourceId`, `kind`)")
     }
 }
+
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Cabeceras por canal (#EXTVLCOPT): muchos streams legales (RTVE, etc.)
+        // exigen un User-Agent/Referer concreto o responden 403.
+        db.execSQL("ALTER TABLE `channels` ADD COLUMN `userAgent` TEXT")
+        db.execSQL("ALTER TABLE `channels` ADD COLUMN `referrer` TEXT")
+    }
+}

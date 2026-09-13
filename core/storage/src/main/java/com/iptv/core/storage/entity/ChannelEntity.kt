@@ -39,4 +39,8 @@ data class ChannelEntity(
     val isFavorite: Boolean = false,
     /** Idioma/país detectado (prefijo de categoría/canal o alfabeto); "" = sin señal. */
     val language: String = "",
+    /** User-Agent propio del canal (#EXTVLCOPT); si no, se usa el de la fuente. */
+    val userAgent: String? = null,
+    /** Referer propio del canal (#EXTVLCOPT http-referrer). */
+    val referrer: String? = null,
 )

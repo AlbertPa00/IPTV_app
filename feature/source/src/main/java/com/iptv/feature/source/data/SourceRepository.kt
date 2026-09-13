@@ -517,6 +517,8 @@ class SourceRepository @Inject constructor(
         kind = kind,
         containerExt = containerExt,
         sortOrder = sortOrder,
+        userAgent = userAgent?.takeIf { it.isNotBlank() },
+        referrer = referrer?.takeIf { it.isNotBlank() },
     )
 
     private fun copyPlaylistToInternalStorage(uri: Uri): StoredPlaylist {

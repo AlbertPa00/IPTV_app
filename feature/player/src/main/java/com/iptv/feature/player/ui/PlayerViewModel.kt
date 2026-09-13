@@ -294,17 +294,20 @@ class PlayerViewModel @Inject constructor(
         _uiState.update { it.copy(channel = channel, isLive = isLive) }
         val source = sourceDao.findById(channel.sourceId)
 
-        castUserAgent = source?.userAgent ?: DEFAULT_USER_AGENT
-        castReferrer = source?.referrer?.takeIf { it.isNotBlank() }
+        // Prioridad: cabeceras propias del canal (#EXTVLCOPT) > las de la fuente.
+        val userAgent = channel.userAgent?.takeIf { it.isNotBlank() }
+            ?: source?.userAgent ?: DEFAULT_USER_AGENT
+        val referrer = channel.referrer?.takeIf { it.isNotBlank() }
+            ?: source?.referrer?.takeIf { it.isNotBlank() }
+        castUserAgent = userAgent
+        castReferrer = referrer
 
         val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(source?.userAgent ?: DEFAULT_USER_AGENT)
+            .setUserAgent(userAgent)
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
-        source?.referrer?.takeIf { it.isNotBlank() }?.let { referrer ->
-            httpFactory.setDefaultRequestProperties(mapOf("Referer" to referrer))
-        }
+        referrer?.let { httpFactory.setDefaultRequestProperties(mapOf("Referer" to it)) }
 
         val item = buildMediaItem(channel, isLive)
         mediaItem = item

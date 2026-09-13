@@ -87,12 +87,35 @@ class MigrationTest {
     }
 
     @Test
-    fun migrateAll_1to7() {
+    fun migrate7To8_addsChannelHeaderColumns() {
+        helper.createDatabase(DB_NAME, 7).apply {
+            execSQL(
+                "INSERT INTO sources (id, type, name, isActive) VALUES (1, 'M3U_URL', 'S1', 1)",
+            )
+            execSQL(
+                "INSERT INTO channels (sourceId, externalId, name, nameNorm, streamUrl, kind, sortOrder, isFavorite, language) " +
+                    "VALUES (1, 'u1', 'La 1', 'la 1', 'http://x', 'LIVE', 0, 0, '')",
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(DB_NAME, 8, true, MIGRATION_7_8)
+
+        db.query("SELECT name, userAgent, referrer FROM channels").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("La 1", c.getString(0))
+            assertTrue(c.isNull(1))
+            assertTrue(c.isNull(2))
+        }
+    }
+
+    @Test
+    fun migrateAll_1to8() {
         helper.createDatabase(DB_NAME, 1).close()
         helper.runMigrationsAndValidate(
-            DB_NAME, 7, true,
+            DB_NAME, 8, true,
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-            MIGRATION_5_6, MIGRATION_6_7,
+            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
         )
     }
 
