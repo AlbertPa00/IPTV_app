@@ -72,6 +72,15 @@ class AppPreferences @Inject constructor(
         prefs.edit().remove(KEY_PIN_SALT).remove(KEY_PIN_HASH).apply()
     }
 
+    // -- Backfill de idioma ---------------------------------------------------
+
+    /** Versión del detector de idioma ya aplicada al catálogo. */
+    fun languageTagVersion(): Int = prefs.getInt(KEY_LANG_TAG_VERSION, 0)
+
+    fun setLanguageTagVersion(version: Int) {
+        prefs.edit().putInt(KEY_LANG_TAG_VERSION, version).apply()
+    }
+
     // -- Internals ------------------------------------------------------------
 
     private fun booleanFlow(key: String, default: Boolean): Flow<Boolean> = callbackFlow {
@@ -105,6 +114,7 @@ class AppPreferences @Inject constructor(
         const val KEY_AUTO_REFRESH = "auto_refresh_enabled"
         const val KEY_WIFI_ONLY = "auto_refresh_wifi_only"
         const val KEY_CRASH_REPORTING = "crash_reporting_enabled"
+        const val KEY_LANG_TAG_VERSION = "language_tag_version"
         const val KEY_PIN_SALT = "parental_pin_salt"
         const val KEY_PIN_HASH = "parental_pin_hash"
         const val SALT_BYTES = 16

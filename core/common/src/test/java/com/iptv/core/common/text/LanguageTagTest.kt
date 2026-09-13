@@ -6,10 +6,10 @@ import org.junit.Test
 class LanguageTagTest {
 
     @Test
-    fun `prefijos de pais con distintos separadores`() {
+    fun `prefijos de pais agrupan en familia de idioma`() {
         assertEquals("AR", LanguageTag.detect("AR - SHAHID VIP"))
-        assertEquals("US", LanguageTag.detect("US| ENTERTAINMENT"))
-        assertEquals("UK", LanguageTag.detect("UK: SPORTS"))
+        assertEquals("EN", LanguageTag.detect("US| ENTERTAINMENT"))
+        assertEquals("EN", LanguageTag.detect("UK: SPORTS"))
         assertEquals("ES", LanguageTag.detect("ES - TDT"))
         assertEquals("DE", LanguageTag.detect("DE  CINE"))
         assertEquals("FR", LanguageTag.detect("FR/INFOS"))
@@ -17,9 +17,29 @@ class LanguageTagTest {
 
     @Test
     fun `alias de paneles se normalizan`() {
-        assertEquals("US", LanguageTag.detect("USA| MOVIES"))
-        assertEquals("UK", LanguageTag.detect("GB - NEWS"))
-        assertEquals("LA", LanguageTag.detect("LATAM - NOVELAS"))
+        assertEquals("EN", LanguageTag.detect("USA| MOVIES"))
+        assertEquals("EN", LanguageTag.detect("GB - NEWS"))
+        assertEquals("ES", LanguageTag.detect("LATAM - NOVELAS"))
+        assertEquals("ES", LanguageTag.detect("LATINO 24/7"))
+    }
+
+    @Test
+    fun `paises se agrupan por familia linguistica`() {
+        assertEquals("ES", LanguageTag.detect("MX| NOVELAS"))
+        assertEquals("ES", LanguageTag.detect("CO| NOTICIAS"))
+        assertEquals("AR", LanguageTag.detect("SA| ROTANA"))
+        assertEquals("AR", LanguageTag.detect("EG| NIL SAT"))
+        assertEquals("EN", LanguageTag.detect("CA| CBC"))
+        assertEquals("EN", LanguageTag.detect("AU| SPORTS"))
+        assertEquals("PT", LanguageTag.detect("BR| GLOBO"))
+        assertEquals("SCANDI", LanguageTag.detect("SE| SVT"))
+        assertEquals("SCANDI", LanguageTag.detect("DK| DR1"))
+        assertEquals("EXYU", LanguageTag.detect("SR| SERBIA"))
+        assertEquals("RU", LanguageTag.detect("KZ| KAZACHSTAN"))
+        assertEquals("IN", LanguageTag.detect("PK| URDU"))
+        assertEquals("SEA", LanguageTag.detect("PH| PINOY"))
+        assertEquals("EU", LanguageTag.detect("CZ| NOVA"))
+        assertEquals("GR", LanguageTag.detect("CY| RIK"))
     }
 
     @Test
@@ -53,24 +73,27 @@ class LanguageTagTest {
     }
 
     @Test
-    fun `codigos iso menos frecuentes`() {
-        assertEquals("GE", LanguageTag.detect("GE| GEORGIA"))
-        assertEquals("KZ", LanguageTag.detect("KZ| KAZACHSTAN"))
-        assertEquals("AZ", LanguageTag.detect("AZ| AZERBAIJAN"))
-        assertEquals("EN", LanguageTag.detect("EN - DRAMA"))
+    fun `nombre de pais o idioma completo en cualquier posicion`() {
+        assertEquals("DE", LanguageTag.detect("NETFLIX GERMANY"))
+        assertEquals("TR", LanguageTag.detect("TURKISH SERIES"))
+        assertEquals("ES", LanguageTag.detect("VOD ESPAÑA"))
+        assertEquals("SCANDI", LanguageTag.detect("FILM SVENSKA"))
+        assertEquals("SCANDI", LanguageTag.detect("SUOMI TV"))
+        assertEquals("FR", LanguageTag.detect("QC| TVA"))
+        assertEquals("IN", LanguageTag.detect("HINDI MOVIES"))
+        assertEquals("KU", LanguageTag.detect("KURDISH SHOWS"))
     }
 
     @Test
     fun `prefijo de panel con espacio simple`() {
         assertEquals("ASIA", LanguageTag.detect("ASIA MOVIES (MULTI-SUBS)"))
-        assertEquals("LA", LanguageTag.detect("LATINO 24/7"))
     }
 
     @Test
     fun `codigo iso como sufijo`() {
         assertEquals("ES", LanguageTag.detect("Series | Series ES"))
         assertEquals("ES", LanguageTag.detect("Peliculas | Reina Roja ES"))
-        assertEquals("UK", LanguageTag.detect("Documental Naturaleza (UK)"))
+        assertEquals("EN", LanguageTag.detect("Documental Naturaleza (UK)"))
     }
 
     @Test

@@ -53,6 +53,10 @@ interface CategoryDao {
     @Query("SELECT * FROM categories WHERE language = ''")
     suspend fun withoutLanguage(): List<CategoryEntity>
 
+    /** Proyección ligera de todas las categorías (re-etiquetado de idioma). */
+    @Query("SELECT id, name FROM categories")
+    suspend fun allIdName(): List<ChannelIdName>
+
     @Query("UPDATE categories SET language = :language WHERE id = :id")
     suspend fun setLanguage(id: Long, language: String)
 }

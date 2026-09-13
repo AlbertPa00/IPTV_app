@@ -2,46 +2,50 @@ package com.iptv.core.storage.db
 
 import androidx.room.withTransaction
 import com.iptv.core.common.dispatchers.AppDispatchers
+import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.common.text.LanguageTag
 import com.iptv.core.storage.dao.CategoryDao
 import com.iptv.core.storage.dao.ChannelDao
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.withContext
 
 /**
- * Rellena la columna `language` de catálogos importados antes de la migración
- * a v6. Es idempotente: solo toca filas con `language = ''`, así que llamarla
- * al arrancar es barato cuando no hay nada pendiente.
+ * Etiqueta `language` (familia: "EN", "ES", "AR"…) en categorías y canales.
+ *
+ * Va por versión de detector (`LanguageTag.DETECTOR_VERSION`): cuando sube,
+ * re-etiqueta TODO el catálogo porque el significado del código cambia
+ * (de país suelto a familia agrupada). Canal sin señal propia hereda el
+ * idioma de su categoría. Es una sola transacción en segundo plano.
  */
 @Singleton
 class LanguageBackfill @Inject constructor(
     private val database: AppDatabase,
     private val categoryDao: CategoryDao,
     private val channelDao: ChannelDao,
+    private val prefs: AppPreferences,
     private val dispatchers: AppDispatchers,
 ) {
     suspend fun run() = withContext(dispatchers.io) {
-        if (categoryDao.withoutLanguage().isEmpty() && !channelDao.hasWithoutLanguage()) {
-            return@withContext
-        }
+        if (prefs.languageTagVersion() >= LanguageTag.DETECTOR_VERSION) return@withContext
         database.withTransaction {
-            categoryDao.withoutLanguage().forEach {
-                categoryDao.setLanguage(it.id, LanguageTag.detect(it.name))
+            // 1. Categorías: etiqueta por nombre de grupo.
+            val categoryLanguage = categoryDao.allIdName()
+                .associate { it.id to LanguageTag.detect(it.name) }
+            categoryLanguage.forEach { (id, language) ->
+                categoryDao.setLanguage(id, language)
             }
-            // Canales con categoría: heredan su idioma en una sola consulta.
-            channelDao.propagateLanguageFromCategories()
-            // Resto (sin categoría o categoría sin señal): detección por nombre.
-            channelDao.withoutLanguage()
-                .mapNotNull { row ->
-                    LanguageTag.detect(row.name)
-                        .takeIf { it.isNotBlank() }
-                        ?.let { row.id to it }
+            // 2. Canales: señal propia del nombre o herencia de la categoría.
+            channelDao.allIdNameCategory()
+                .map { row ->
+                    row.id to LanguageTag.detect(row.name)
+                        .ifBlank { categoryLanguage[row.categoryId].orEmpty() }
                 }
                 .groupBy({ it.second }, { it.first })
                 .forEach { (language, ids) ->
                     ids.chunked(500).forEach { channelDao.setLanguageForIds(it, language) }
                 }
         }
+        prefs.setLanguageTagVersion(LanguageTag.DETECTOR_VERSION)
     }
 }

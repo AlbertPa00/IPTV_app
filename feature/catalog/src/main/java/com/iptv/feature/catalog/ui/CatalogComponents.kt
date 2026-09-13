@@ -292,26 +292,41 @@ internal fun LanguageChip(
     )
 }
 
-/** Nombre legible del código: mapa manual para códigos ambiguos; el resto usa Locale. */
+/** Nombre legible de la familia de idioma; el resto usa Locale como país. */
 @Composable
 internal fun languageLabel(code: String): String {
     val manual = when (code) {
-        "AR" -> R.string.lang_ar
-        "LA" -> R.string.lang_la
-        "EXYU" -> R.string.lang_exyu
-        "ASIA" -> R.string.lang_asia
-        "AFR" -> R.string.lang_afr
-        "SCANDI" -> R.string.lang_scandi
-        "KU" -> R.string.lang_ku
-        "INT" -> R.string.lang_int
-        "WORLD" -> R.string.lang_world
-        "EU" -> R.string.lang_eu
         "EN" -> R.string.lang_en
-        "NF" -> R.string.lang_nf
+        "ES" -> R.string.lang_es
+        "AR" -> R.string.lang_ar
+        "DE" -> R.string.lang_de
+        "FR" -> R.string.lang_fr
+        "PT" -> R.string.lang_pt
+        "IT" -> R.string.lang_it
+        "TR" -> R.string.lang_tr
+        "NL" -> R.string.lang_nl
+        "SCANDI" -> R.string.lang_scandi
+        "EXYU" -> R.string.lang_exyu
+        "RU" -> R.string.lang_ru
+        "PL" -> R.string.lang_pl
+        "RO" -> R.string.lang_ro
+        "GR" -> R.string.lang_gr
+        "IL" -> R.string.lang_il
+        "IN" -> R.string.lang_in
+        "IR" -> R.string.lang_ir
+        "KU" -> R.string.lang_ku
+        "CN" -> R.string.lang_cn
+        "JP" -> R.string.lang_jp
+        "KR" -> R.string.lang_kr
+        "SEA" -> R.string.lang_sea
+        "AFR" -> R.string.lang_afr
+        "ASIA" -> R.string.lang_asia
+        "EU" -> R.string.lang_eu
+        "INT" -> R.string.lang_int
+        "AL" -> R.string.lang_al
         "MV" -> R.string.lang_mv
         "MC" -> R.string.lang_mc
         "RX" -> R.string.lang_rx
-        "AS" -> R.string.lang_as
         else -> null
     }
     if (manual != null) return stringResource(manual)

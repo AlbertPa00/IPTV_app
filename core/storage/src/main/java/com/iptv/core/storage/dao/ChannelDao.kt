@@ -86,6 +86,10 @@ interface ChannelDao {
     @Query("SELECT id, name FROM channels WHERE language = ''")
     suspend fun withoutLanguage(): List<ChannelIdName>
 
+    /** Proyección (id, name, categoryId) de TODOS los canales: re-etiquetado. */
+    @Query("SELECT id, name, categoryId FROM channels")
+    suspend fun allIdNameCategory(): List<ChannelIdNameCategory>
+
     @Query("UPDATE channels SET language = :language WHERE id IN (:ids)")
     suspend fun setLanguageForIds(ids: List<Long>, language: String)
 
@@ -116,3 +120,6 @@ interface ChannelDao {
 
 /** Proyección ligera para el backfill de idioma (sin cargar la entidad completa). */
 data class ChannelIdName(val id: Long, val name: String)
+
+/** Proyección para el re-etiquetado completo: nombre + categoría heredable. */
+data class ChannelIdNameCategory(val id: Long, val name: String, val categoryId: Long?)
