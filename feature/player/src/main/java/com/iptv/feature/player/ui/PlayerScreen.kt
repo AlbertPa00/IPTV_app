@@ -101,7 +101,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.Player
+import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -1046,12 +1048,15 @@ private fun TracksDialog(player: Player?, onDismiss: () -> Unit) {
         onDispose { player?.removeListener(listener) }
     }
     val groups = tracks?.groups.orEmpty()
-        .filter { it.type == C.TRACK_TYPE_AUDIO || it.type == C.TRACK_TYPE_TEXT }
+    // La misma pista puede aparecer en varios Tracks.Group (variantes HLS,
+    // DVB): se fusionan por identidad para no repetir filas ni cabeceras.
+    val audioOptions = remember(tracks) { mergeTrackOptions(groups, C.TRACK_TYPE_AUDIO) }
+    val textOptions = remember(tracks) { mergeTrackOptions(groups, C.TRACK_TYPE_TEXT) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.player_tracks), color = Color.White) },
         text = {
-            if (groups.isEmpty()) {
+            if (audioOptions.isEmpty() && textOptions.isEmpty()) {
                 Text(
                     stringResource(R.string.player_tracks_empty),
                     color = PlayerMuted,
@@ -1059,54 +1064,43 @@ private fun TracksDialog(player: Player?, onDismiss: () -> Unit) {
                 )
             } else {
                 LazyColumn {
-                    groups.forEach { group ->
-                        val isText = group.type == C.TRACK_TYPE_TEXT
-                        item {
-                            Text(
-                                text = stringResource(
-                                    if (isText) R.string.player_subtitles else R.string.player_audio
-                                ),
-                                color = PlayerCarmine,
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                    if (audioOptions.isNotEmpty()) {
+                        item { TrackSectionHeader(R.string.player_audio) }
+                        items(audioOptions.size) { i ->
+                            val option = audioOptions[i]
+                            TrackRow(
+                                label = option.label,
+                                selected = option.selected,
+                                enabled = option.enabled,
+                                onClick = { selectTrackOption(player, C.TRACK_TYPE_AUDIO, option) },
                             )
                         }
-                        if (isText) {
-                            item {
-                                TrackRow(
-                                    label = stringResource(R.string.player_track_off),
-                                    selected = (0 until group.length).none { group.isTrackSelected(it) },
-                                    onClick = {
-                                        player?.trackSelectionParameters =
-                                            player.trackSelectionParameters.buildUpon()
-                                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                                                .build()
-                                    },
-                                )
-                            }
-                        }
-                        items(group.length) { index ->
-                            val format = group.getTrackFormat(index)
-                            val label = format.label
-                                ?: format.language
-                                ?: format.id
-                                ?: "${index + 1}"
+                    }
+                    if (textOptions.isNotEmpty()) {
+                        item { TrackSectionHeader(R.string.player_subtitles) }
+                        item {
+                            val noneSelected = groups
+                                .filter { it.type == C.TRACK_TYPE_TEXT }
+                                .all { g -> (0 until g.length).none { g.isTrackSelected(it) } }
                             TrackRow(
-                                label = label,
-                                selected = group.isTrackSelected(index),
-                                enabled = group.isTrackSupported(index),
+                                label = stringResource(R.string.player_track_off),
+                                selected = noneSelected,
                                 onClick = {
                                     player?.trackSelectionParameters =
                                         player.trackSelectionParameters.buildUpon()
-                                            .setTrackTypeDisabled(group.type, false)
-                                            .setOverrideForType(
-                                                TrackSelectionOverride(
-                                                    group.mediaTrackGroup,
-                                                    index,
-                                                ),
-                                            )
+                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                                             .build()
                                 },
+                            )
+                        }
+                        items(textOptions.size) { i ->
+                            val option = textOptions[i]
+                            TrackRow(
+                                label = option.label,
+                                selected = option.selected,
+                                enabled = option.enabled,
+                                onClick = { selectTrackOption(player, C.TRACK_TYPE_TEXT, option) },
                             )
                         }
                     }
@@ -1119,6 +1113,78 @@ private fun TracksDialog(player: Player?, onDismiss: () -> Unit) {
             }
         },
         containerColor = PlayerGraphite,
+    )
+}
+
+/** Opción de pista ya fusionada: puede apuntar a varios grupos duplicados. */
+private data class TrackOption(
+    val label: String,
+    val selected: Boolean,
+    val enabled: Boolean,
+    val targets: List<Pair<TrackGroup, Int>>,
+)
+
+private fun mergeTrackOptions(
+    groups: List<Tracks.Group>,
+    type: Int,
+): List<TrackOption> {
+    val byKey = linkedMapOf<String, TrackOption>()
+    var order = 0
+    groups.filter { it.type == type }.forEach { group ->
+        for (i in 0 until group.length) {
+            val f = group.getTrackFormat(i)
+            // El id suele variar entre grupos del mismo stream lógico (HLS/DVB);
+            // la clave es la identidad visible para el usuario.
+            val key = "${f.language}|${f.label}|${f.sampleMimeType}|${f.codecs}|${f.channelCount}|${f.roleFlags}|${f.selectionFlags}"
+            val existing = byKey[key]
+            if (existing == null) {
+                order++
+                byKey[key] = TrackOption(
+                    label = trackLabel(f, order),
+                    selected = group.isTrackSelected(i),
+                    enabled = group.isTrackSupported(i),
+                    targets = listOf(group.mediaTrackGroup to i),
+                )
+            } else {
+                byKey[key] = existing.copy(
+                    selected = existing.selected || group.isTrackSelected(i),
+                    enabled = existing.enabled || group.isTrackSupported(i),
+                    targets = existing.targets + (group.mediaTrackGroup to i),
+                )
+            }
+        }
+    }
+    return byKey.values.toList()
+}
+
+private fun selectTrackOption(player: Player?, type: Int, option: TrackOption) {
+    val builder = player?.trackSelectionParameters?.buildUpon()
+        ?.setTrackTypeDisabled(type, false)
+        ?.clearOverridesOfType(type)
+        ?: return
+    option.targets.forEach { (group, index) ->
+        builder.setOverrideForType(TrackSelectionOverride(group, index))
+    }
+    player.trackSelectionParameters = builder.build()
+}
+
+/** Etiqueta legible: evita IDs tipo "1/8219" (DVB) cuando hay idioma. */
+private fun trackLabel(format: Format, fallbackIndex: Int): String =
+    format.label?.takeIf { it.any(Char::isLetter) }
+        ?: format.language?.let {
+            runCatching { java.util.Locale(it).displayLanguage }.getOrNull()
+        }
+        ?: format.label
+        ?: format.id
+        ?: "#$fallbackIndex"
+
+@Composable
+private fun TrackSectionHeader(titleRes: Int) {
+    Text(
+        text = stringResource(titleRes),
+        color = PlayerCarmine,
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
     )
 }
 
