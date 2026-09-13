@@ -1,6 +1,6 @@
 # Política de privacidad / Privacy Policy
 
-Última actualización / Last updated: 2025-01-01
+Última actualización / Last updated: 2026-09-13
 
 ## Español
 

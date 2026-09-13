@@ -7,3 +7,11 @@
 # NanoHTTPD intenta registrar un shutdown hook con sun.misc.Signal (no existe
 # en Android); es un camino opcional protegido por reflexión.
 -dontwarn sun.misc.Signal
+
+# En release se eliminan las trazas d/v: varias registran URLs de proveedor
+# que llevan credenciales Xtream embebidas en el path. Las w/e que quedan
+# redactan la URL (ver UrlLogRedact.kt).
+-assumenosideeffects class android.util.Log {
+    public static int d(...);
+    public static int v(...);
+}

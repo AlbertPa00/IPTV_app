@@ -41,7 +41,7 @@ object CastStreamProber {
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                Log.w(TAG, "Probe HTTP ${response.code} for $url")
+                Log.w(TAG, "Probe HTTP ${response.code} for ${redactUrl(url)}")
                 return@use Kind.UNKNOWN
             }
             val head = ByteArray(SNIFF_BYTES)
@@ -53,7 +53,7 @@ object CastStreamProber {
                 kindFromContentType(response.header("Content-Type"))
             }
         }
-    }.onFailure { Log.w(TAG, "Probe failed for $url", it) }
+    }.onFailure { Log.w(TAG, "Probe failed for ${redactUrl(url)}", it) }
         .getOrDefault(Kind.UNKNOWN)
 
     /**

@@ -17,6 +17,12 @@
     <uses-feature
         android:name="android.software.leanback"
         android:required="false" />
+    <!-- Los permisos Wi-Fi (multicast IPTV, descubrimiento Cast) implican
+         hardware Wi-Fi obligatorio; se marca opcional para no excluir
+         televisores y boxes que sólo tienen Ethernet. -->
+    <uses-feature
+        android:name="android.hardware.wifi"
+        android:required="false" />
 
     <application
         android:name=".IptvApplication"

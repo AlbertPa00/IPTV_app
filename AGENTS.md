@@ -14,16 +14,16 @@ Un feature no debe depender de otro feature. Los slices nuevos se integran desde
 
 ## Entorno
 
-- JDK 17.
-- Android SDK API 35 y Build Tools 35.0.0.
-- Gradle Wrapper 8.9 incluido.
-- SDK local de Windows: `C:\Users\apalomino\AppData\Local\Android\Sdk`.
+- JDK 17+ (el `java` por defecto del sistema es JRE 8 y rompe el build;
+  usar `JAVA_HOME=C:\Users\alpal\.jdks\openjdk-19.0.2`).
+- Android SDK API 36 y Build Tools 35.0.0 (AGP 8.13, Gradle Wrapper 8.13).
+- SDK local de Windows: `C:\Users\alpal\AppData\Local\Android\Sdk`.
 - `ANDROID_HOME` y `ANDROID_SDK_ROOT` están configurados como variables del usuario.
 
 Si el SDK no se detecta en una terminal ya abierta, reiniciarla o crear `local.properties` (no se versiona):
 
 ```properties
-sdk.dir=C:\\ruta\\al\\Android\\Sdk
+sdk.dir=C:\\Users\\alpal\\AppData\\Local\\Android\\Sdk
 ```
 
 ## Verificación

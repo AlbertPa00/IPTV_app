@@ -8,8 +8,8 @@ plugins {
 
 android {
     namespace = "com.iptv.feature.catalog"
-    compileSdk = 35
-    defaultConfig { minSdk = 24 }
+    compileSdk = 36
+    defaultConfig { minSdk = 26 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

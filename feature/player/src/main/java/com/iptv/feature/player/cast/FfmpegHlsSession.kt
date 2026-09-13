@@ -73,7 +73,10 @@ class FfmpegHlsSession(
                     if (!ReturnCode.isSuccess(completed.returnCode)) {
                         failure = "ffmpeg exited rc=${completed.returnCode}"
                         Log.e(TAG, "ffmpeg failed: $failure")
-                        completed.allLogsAsString.takeLast(600).let { Log.e(TAG, it) }
+                        completed.allLogsAsString
+                            .replace(targetUrl, "<url>")
+                            .takeLast(600)
+                            .let { Log.e(TAG, it) }
                     }
                 },
                 { log -> Log.d(TAG, log.message ?: "") },

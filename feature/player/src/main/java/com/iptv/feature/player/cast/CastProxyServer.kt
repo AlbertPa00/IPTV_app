@@ -196,7 +196,15 @@ private class ProxyServer(
                 else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Proxy error for $uri", e)
+            // El path lleva tokens que decodifican a URLs con credenciales:
+            // sólo se registra la sección servida.
+            val route = when {
+                routed.startsWith(HLS_PREFIX) -> "hls"
+                routed.startsWith(SEG_PREFIX) -> "seg"
+                routed.startsWith(PROXY_PREFIX) -> "proxy"
+                else -> "?"
+            }
+            Log.e(TAG, "Proxy error (${session.method} $route)", e)
             newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Proxy error: ${e.message}")
         }
     }

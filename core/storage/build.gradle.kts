@@ -7,9 +7,9 @@ plugins {
 
 android {
     namespace = "com.iptv.core.storage"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
-        minSdk = 24
+        minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     sourceSets["androidTest"].assets.srcDir("schemas")

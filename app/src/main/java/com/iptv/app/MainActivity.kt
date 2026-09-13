@@ -40,11 +40,14 @@ class MainActivity : ComponentActivity() {
     private fun enterPip() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         runCatching {
-            enterPictureInPictureMode(
-                PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(16, 9))
-                    .build(),
-            )
+            val params = PictureInPictureParams.Builder()
+                .setAspectRatio(Rational(16, 9))
+            // Android 12+: la transición a PiP al salir es fluida y no depende
+            // del callback onUserLeaveHint (navigation gestures lo omiten).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                params.setAutoEnterEnabled(true)
+            }
+            enterPictureInPictureMode(params.build())
         }
     }
 
