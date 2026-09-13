@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IPTV — Política de privacidad / Privacy Policy</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0b0c0f; color: #e8e9eb; line-height: 1.6;
+    max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+  }
+  h1 { font-size: 1.6rem; margin-bottom: .25rem; }
+  h2 { font-size: 1.2rem; margin-top: 2.5rem; border-bottom: 1px solid #2a2d34; padding-bottom: .4rem; }
+  h3 { font-size: 1rem; margin-top: 1.6rem; color: #9aa3b2; text-transform: uppercase; letter-spacing: .04em; }
+  .updated { color: #9aa3b2; font-size: .9rem; }
+  strong { color: #fff; }
+  code { background: #1c1f26; padding: .1em .35em; border-radius: 4px; font-size: .9em; }
+  ul { padding-left: 1.4rem; }
+  li { margin: .4rem 0; }
+  hr { border: none; border-top: 1px solid #2a2d34; margin: 2.5rem 0 0; }
+  a { color: #6ea8ff; }
+</style>
+</head>
+<body>
+
+<h1>IPTV — Política de privacidad / Privacy Policy</h1>
+<p class="updated">Última actualización / Last updated: 2026-09-13</p>
+
+<h2>Español</h2>
+
+<p><strong>IPTV es un reproductor. No incluye, aloja ni distribuye contenido,
+listas de canales ni suscripciones.</strong> Toda la información descrita a
+continuación se refiere exclusivamente a los datos que el propio usuario
+introduce en la app.</p>
+
+<h3>Datos que almacena la app (sólo en el dispositivo)</h3>
+<ul>
+  <li><strong>Fuentes y credenciales</strong>: URLs de listas M3U y credenciales
+  de cuentas Xtream Codes que el usuario introduce voluntariamente. Las
+  contraseñas se guardan cifradas con Android Keystore (AES-GCM).</li>
+  <li><strong>Catálogo local</strong>: canales, películas, series, favoritos,
+  historial de reproducción y preferencias, almacenados en una base de datos
+  local (Room).</li>
+  <li><strong>Ajustes</strong>: tema, PIN de control parental (almacenado como
+  hash con sal), refresco automático y preferencias de uso.</li>
+</ul>
+
+<h3>Datos que la app envía</h3>
+<ul>
+  <li>La app <strong>no envía datos personales a servidores propios</strong>: no
+  hay analytics, publicidad ni cuentas de usuario. El informe de errores
+  (Firebase Crashlytics) está desactivado por defecto y sólo se activa si el
+  usuario lo habilita explícitamente en Ajustes.</li>
+  <li>Las únicas peticiones de red son las que realiza el propio usuario hacia
+  <strong>sus</strong> proveedores: descarga de listas, peticiones a APIs
+  Xtream, guías XMLTV y el propio streaming. Las credenciales viajan únicamente
+  hacia el servidor del proveedor que el usuario configuró, según el protocolo
+  de ese proveedor (que puede ser HTTP sin cifrar — fuera del control de la
+  app).</li>
+  <li>Al emitir a Chromecast, el teléfono actúa como proxy local dentro de la
+  red Wi-Fi del usuario para servir el stream al dispositivo Cast.</li>
+</ul>
+
+<h3>Copias de seguridad</h3>
+<p>La base de datos (fuentes, credenciales y catálogo) y las listas copiadas al
+dispositivo están <strong>excluidas</strong> de la copia de seguridad de
+Android. Tras una restauración o cambio de dispositivo, el usuario vuelve a
+introducir sus fuentes.</p>
+
+<h3>Permisos</h3>
+<ul>
+  <li><code>INTERNET</code>, <code>ACCESS_NETWORK_STATE</code>: streaming y
+  descarga de catálogos.</li>
+  <li><code>POST_NOTIFICATIONS</code> (Android 13+): mostrar el control de
+  emisión a Chromecast. Se solicita en contexto, sólo si se usa la
+  función.</li>
+  <li><code>NEARBY_WIFI_DEVICES</code> (Android 13+): descubrir dispositivos
+  Chromecast en la red local. Se solicita en contexto, sin usarlo para
+  geolocalización.</li>
+  <li><code>WAKE_LOCK</code>, <code>FOREGROUND_SERVICE_MEDIA_PLAYBACK</code>:
+  mantener la reproducción y la emisión activas.</li>
+</ul>
+
+<h3>Control parental</h3>
+<p>El PIN de control parental se almacena localmente como hash (SHA-256 con sal
+aleatoria); nunca se transmite.</p>
+
+<h3>Contacto</h3>
+<p>Para dudas sobre esta política, abre un issue en el
+<a href="https://github.com/AlbertPa00/IPTV_app">repositorio del proyecto</a>.</p>
+
+<hr>
+
+<h2>English</h2>
+
+<p><strong>IPTV is a player. It does not include, host, or distribute content,
+channel lists, or subscriptions.</strong> Everything below refers only to data
+the user enters into the app.</p>
+
+<h3>Data stored by the app (on-device only)</h3>
+<ul>
+  <li><strong>Sources and credentials</strong>: M3U playlist URLs and Xtream
+  Codes account credentials voluntarily entered by the user. Passwords are
+  stored encrypted with Android Keystore (AES-GCM).</li>
+  <li><strong>Local catalog</strong>: channels, movies, series, favorites,
+  playback history, and preferences in a local Room database.</li>
+  <li><strong>Settings</strong>: theme, parental-control PIN (stored as a
+  salted hash), auto-refresh, and usage preferences.</li>
+</ul>
+
+<h3>Data the app sends</h3>
+<ul>
+  <li>The app <strong>sends no personal data to its own servers</strong>: no
+  analytics, no ads, no user accounts. Crash reporting (Firebase Crashlytics)
+  is disabled by default and only runs if the user explicitly enables it in
+  Settings.</li>
+  <li>The only network requests are those the user's own providers receive:
+  playlist downloads, Xtream API calls, XMLTV guides, and streaming.
+  Credentials travel only to the provider's server as configured by the user
+  (which may be unencrypted HTTP — outside the app's control).</li>
+  <li>When casting to Chromecast, the phone acts as a local proxy on the user's
+  Wi-Fi network to serve the stream to the Cast device.</li>
+</ul>
+
+<h3>Backups</h3>
+<p>The database (sources, credentials, catalog) and playlists copied to the
+device are <strong>excluded</strong> from Android backup. After a restore or
+device change, the user re-adds their sources.</p>
+
+<h3>Permissions</h3>
+<ul>
+  <li><code>INTERNET</code>, <code>ACCESS_NETWORK_STATE</code>: streaming and
+  catalog downloads.</li>
+  <li><code>POST_NOTIFICATIONS</code> (Android 13+): show the Chromecast casting
+  control. Requested in context, only when the feature is used.</li>
+  <li><code>NEARBY_WIFI_DEVICES</code> (Android 13+): discover Chromecast
+  devices on the local network. Requested in context; not used for
+  geolocation.</li>
+  <li><code>WAKE_LOCK</code>, <code>FOREGROUND_SERVICE_MEDIA_PLAYBACK</code>:
+  keep playback and casting alive.</li>
+</ul>
+
+<h3>Parental control</h3>
+<p>The parental PIN is stored locally as a hash (SHA-256 with a random salt)
+and is never transmitted.</p>
+
+<h3>Contact</h3>
+<p>For questions about this policy, open an issue in the
+<a href="https://github.com/AlbertPa00/IPTV_app">project repository</a>.</p>
+
+</body>
+</html>
