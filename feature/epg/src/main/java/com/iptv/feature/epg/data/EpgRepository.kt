@@ -1,28 +1,26 @@
 package com.iptv.feature.epg.data
 
-import androidx.room.withTransaction
 import com.iptv.core.common.dispatchers.AppDispatchers
 import com.iptv.core.network.DEFAULT_USER_AGENT
 import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.ProgrammeDao
 import com.iptv.core.storage.dao.SourceDao
-import com.iptv.core.storage.db.AppDatabase
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.ProgrammeEntity
 import com.iptv.core.storage.entity.SourceEntity
 import com.iptv.core.storage.entity.SourceTypes
 import com.iptv.core.storage.security.CredentialCrypto
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
-import java.io.InputStream
 import java.util.zip.GZIPInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,7 +34,6 @@ sealed interface EpgSyncState {
 
 @Singleton
 class EpgRepository @Inject constructor(
-    private val database: AppDatabase,
     private val sourceDao: SourceDao,
     private val channelDao: ChannelDao,
     private val programmeDao: ProgrammeDao,
@@ -44,14 +41,52 @@ class EpgRepository @Inject constructor(
     private val crypto: CredentialCrypto,
     private val dispatchers: AppDispatchers,
 ) {
-    fun syncActive(): Flow<EpgSyncState> = channelFlow {
-        val source = sourceDao.observeActive().firstOrNull() ?: run {
-            send(EpgSyncState.Failed(EpgSyncState.Reason.NO_SOURCE)); return@channelFlow
+    /**
+     * Serializa las sincronizaciones: puede haber varias a la vez (auto-sync al
+     * cambiar el catálogo, botón de la guía, worker diario) y sin el mutex cada
+     * una descarga la EPG entera y las transacciones se encolan sobre el lock
+     * de escritura de SQLite. Además el lock de Room no es cancelable: una sync
+     * encolada por `withLock` sí responde a cancelación antes de descargar.
+     */
+    private val syncMutex = Mutex()
+
+    // Si una sync acaba de terminar con éxito, una petición inmediata (p. ej.
+    // el auto-sync de arranque seguido del botón de la guía) reutiliza el
+    // resultado en lugar de volver a descargar el XMLTV completo.
+    private var lastSyncEndAt = 0L
+    private var lastImportedCount = 0
+
+    fun syncActive(): Flow<EpgSyncState> = flow {
+        emit(EpgSyncState.Progress(0))
+        syncMutex.withLock {
+            if (System.currentTimeMillis() - lastSyncEndAt < SYNC_DEDUPE_MILLIS) {
+                emit(EpgSyncState.Done(lastImportedCount))
+            } else {
+                val source = sourceDao.observeActive().firstOrNull()
+                val url = source?.let { s ->
+                    EpgUrlResolver.resolve(s) { encrypted -> crypto.decrypt(encrypted) }
+                }
+                when {
+                    source == null -> emit(EpgSyncState.Failed(EpgSyncState.Reason.NO_SOURCE))
+                    url == null -> emit(EpgSyncState.Failed(EpgSyncState.Reason.NO_URL))
+                    else -> importEpg(source, url) { emit(it) }
+                }
+            }
         }
-        val url = EpgUrlResolver.resolve(source) { encrypted -> crypto.decrypt(encrypted) } ?: run {
-            send(EpgSyncState.Failed(EpgSyncState.Reason.NO_URL)); return@channelFlow
-        }
-        send(EpgSyncState.Progress(0))
+    }.flowOn(dispatchers.io)
+
+    /**
+     * Descarga y vuelca el XMLTV. Los inserts van por lotes sin transacción
+     * envolvente: el lock de escritura se libera entre lotes (la guía se va
+     * poblando durante la importación y un refresco de catálogo en paralelo no
+     * queda bloqueado minutos esperando el commit final). Si la descarga falla
+     * a mitad quedan datos parciales, recuperables reintentando.
+     */
+    private suspend fun importEpg(
+        source: SourceEntity,
+        url: String,
+        emit: suspend (EpgSyncState) -> Unit,
+    ) {
         try {
             val request = Request.Builder()
                 .url(url)
@@ -66,37 +101,37 @@ class EpgRepository @Inject constructor(
                 stream.use { imported ->
                     val association = EpgAssociation(channelDao.liveBySource(source.id))
                     var count = 0
-                    database.withTransaction {
-                        programmeDao.deleteBySource(source.id)
-                        val batch = ArrayList<ProgrammeEntity>(BATCH_SIZE)
-                        XmlTvParser().parse(imported) { raw ->
-                            if (association.matches(raw)) {
-                                batch += raw.toEntity(source.id)
-                                count++
-                                if (batch.size == BATCH_SIZE) {
-                                    programmeDao.insertAll(batch)
-                                    batch.clear()
-                                    trySend(EpgSyncState.Progress(count))
-                                }
+                    programmeDao.deleteBySource(source.id)
+                    val batch = ArrayList<ProgrammeEntity>(BATCH_SIZE)
+                    XmlTvParser().parse(imported) { raw ->
+                        if (association.matches(raw)) {
+                            batch += raw.toEntity(source.id)
+                            count++
+                            if (batch.size == BATCH_SIZE) {
+                                programmeDao.insertAll(batch)
+                                batch.clear()
+                                emit(EpgSyncState.Progress(count))
                             }
                         }
-                        if (batch.isNotEmpty()) programmeDao.insertAll(batch)
                     }
-                    if (count == 0) send(EpgSyncState.Failed(EpgSyncState.Reason.EMPTY))
-                    else {
+                    if (batch.isNotEmpty()) programmeDao.insertAll(batch)
+                    if (count == 0) {
+                        emit(EpgSyncState.Failed(EpgSyncState.Reason.EMPTY))
+                    } else {
                         programmeDao.purgeEndedBefore(System.currentTimeMillis() - RETENTION_MILLIS)
-                        send(EpgSyncState.Done(count))
+                        lastImportedCount = count
+                        lastSyncEndAt = System.currentTimeMillis()
+                        emit(EpgSyncState.Done(count))
                     }
                 }
             }
         } catch (e: IOException) {
-            send(EpgSyncState.Failed(EpgSyncState.Reason.NETWORK))
+            emit(EpgSyncState.Failed(EpgSyncState.Reason.NETWORK))
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            send(EpgSyncState.Failed(EpgSyncState.Reason.INVALID_XML))
+            emit(EpgSyncState.Failed(EpgSyncState.Reason.INVALID_XML))
         }
-        awaitClose { }
-    }.flowOn(dispatchers.io)
+    }
 
     private fun XmlTvProgramme.toEntity(sourceId: Long) = ProgrammeEntity(
         sourceId = sourceId,
@@ -112,6 +147,7 @@ class EpgRepository @Inject constructor(
     private companion object {
         const val BATCH_SIZE = 500
         const val RETENTION_MILLIS = 24L * 60 * 60 * 1000
+        const val SYNC_DEDUPE_MILLIS = 60_000L
     }
 }
 

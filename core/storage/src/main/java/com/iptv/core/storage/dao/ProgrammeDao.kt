@@ -64,6 +64,10 @@ interface ProgrammeDao {
     @Query("SELECT EXISTS(SELECT 1 FROM programmes WHERE sourceId = :sourceId LIMIT 1)")
     fun observeHasProgrammes(sourceId: Long): Flow<Boolean>
 
+    /** true si la EPG importada cubre el instante actual (hay programas sin terminar). */
+    @Query("SELECT EXISTS(SELECT 1 FROM programmes WHERE sourceId = :sourceId AND endUtc > :atUtc LIMIT 1)")
+    suspend fun hasFutureProgrammes(sourceId: Long, atUtc: Long): Boolean
+
     @Query("SELECT * FROM programmes WHERE sourceId = :sourceId AND channelKey = :channelKey AND startUtc <= :atUtc AND endUtc > :atUtc ORDER BY startUtc DESC LIMIT 1")
     fun observeCurrent(sourceId: Long, channelKey: String, atUtc: Long): Flow<ProgrammeEntity?>
 
