@@ -202,9 +202,43 @@ class PlayerViewModel @Inject constructor(
     // Fuera de viewModelScope para poder hacer la escritura final en onCleared.
     private val historyScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** Vigía de buffering: streams caídos pueden dejar al player en
+     *  BUFFERING indefinidamente; pasado el umbral se muestra un error. */
+    private var bufferingWatchdog: kotlinx.coroutines.Job? = null
+
     private val localListener = object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
+            bufferingWatchdog?.cancel()
             _uiState.update { it.copy(errorRes = mapPlaybackError(error)) }
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            when (playbackState) {
+                Player.STATE_BUFFERING -> {
+                    if (bufferingWatchdog?.isActive != true) {
+                        bufferingWatchdog = viewModelScope.launch {
+                            delay(BUFFERING_TIMEOUT_MS)
+                            if (!_uiState.value.isCasting) {
+                                _uiState.update {
+                                    it.copy(errorRes = R.string.player_error_timeout)
+                                }
+                            }
+                        }
+                    }
+                }
+                Player.STATE_READY -> {
+                    bufferingWatchdog?.cancel()
+                    bufferingWatchdog = null
+                    // Si el stream se recuperó tras el aviso, se retira solo.
+                    if (_uiState.value.errorRes == R.string.player_error_timeout) {
+                        _uiState.update { it.copy(errorRes = null) }
+                    }
+                }
+                else -> {
+                    bufferingWatchdog?.cancel()
+                    bufferingWatchdog = null
+                }
+            }
         }
     }
 
@@ -378,6 +412,9 @@ class PlayerViewModel @Inject constructor(
         channelId = id
         transcodeEscalated = false
         activeCastHlsMode = null
+        // El canal nuevo arranca su propio vigía, sin heredar el tiempo del anterior.
+        bufferingWatchdog?.cancel()
+        bufferingWatchdog = null
         CastProxyRuntime.channelTitle = channel.name
         val isLive = channel.kind == Kinds.LIVE
         _uiState.update {
@@ -686,10 +723,21 @@ class PlayerViewModel @Inject constructor(
 
     fun retry() {
         _uiState.update { it.copy(errorRes = null, showReturnToMobile = false, castErrorDetail = null) }
-        _player.value?.run {
-            prepare()
-            play()
+        val player = _player.value ?: return
+        // El error del vigía llega con el player aún en BUFFERING: hay que
+        // recargar el MediaItem, prepare() solo no reintenta una carga en curso.
+        if (player === localPlayer) {
+            mediaItem?.let {
+                val startAt = if (_uiState.value.isLive) {
+                    0L
+                } else {
+                    player.currentPosition.coerceAtLeast(0L)
+                }
+                player.setMediaItem(it, startAt)
+            }
         }
+        player.prepare()
+        player.play()
     }
 
     fun returnToMobile() {
@@ -766,6 +814,7 @@ class PlayerViewModel @Inject constructor(
     private companion object {
         const val TAG = "IptvPlayer"
         const val HISTORY_SAVE_INTERVAL_MS = 10_000L
+        const val BUFFERING_TIMEOUT_MS = 20_000L
         const val COMPLETE_THRESHOLD = 0.95
     }
 }

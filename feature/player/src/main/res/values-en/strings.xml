@@ -13,6 +13,7 @@
     <string name="player_pip">Floating window</string>
     <string name="player_live">LIVE</string>
     <string name="player_on_demand">ON DEMAND</string>
+    <string name="player_loading">Loading…</string>
     <string name="player_playback_interrupted">Playback interrupted</string>
     <string name="player_retry">Retry</string>
     <string name="player_cast">Cast to Chromecast</string>
@@ -26,6 +27,7 @@
     <string name="player_error_codec">Your phone does not support this channel\'s codec</string>
     <string name="player_error_generic">The channel could not be played</string>
     <string name="player_error_channel_missing">This channel no longer exists in your list</string>
+    <string name="player_error_timeout">The channel is not responding; it may be down or overloaded</string>
     <string name="cast_service_notification_title">Casting to Chromecast</string>
     <string name="cast_service_channel_name">Chromecast</string>
     <string name="cast_service_stop">Stop casting</string>

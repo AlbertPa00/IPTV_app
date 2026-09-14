@@ -63,6 +63,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -76,6 +77,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -140,6 +142,7 @@ fun PlayerScreen(
     var fullscreen by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(false) }
+    var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var scrubFraction by remember { mutableStateOf<Float?>(null) }
@@ -203,8 +206,10 @@ fun PlayerScreen(
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onPlaybackStateChanged(state: Int) { playbackState = state }
             override fun onTracksChanged(tracks: Tracks) { tracksTick++ }
         }
+        playbackState = player?.playbackState ?: Player.STATE_IDLE
         player?.addListener(listener)
         onDispose { player?.removeListener(listener) }
     }
@@ -436,6 +441,27 @@ fun PlayerScreen(
             )
         }
 
+        // Un stream que no arranca dejaba la pantalla negra sin feedback:
+        // mientras bufferiza se muestra un indicador, visible aunque los
+        // controles estén ocultos; el vigía del ViewModel lo convierte en
+        // error si la espera se alarga demasiado.
+        if (playbackState == Player.STATE_BUFFERING && !isInPipMode &&
+            !state.isCasting && state.errorRes == null
+        ) {
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator(color = PlayerCarmine)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = stringResource(R.string.player_loading),
+                    color = PlayerMuted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+
         AnimatedVisibility(
             visible = controlsVisible && !isInPipMode,
             enter = fadeIn(),
@@ -656,21 +682,27 @@ fun PlayerScreen(
                             }
                             Spacer(Modifier.width(28.dp))
                         }
-                        IconButton(
-                            onClick = {
-                                player?.let { if (it.isPlaying) it.pause() else it.play() }
-                            },
-                            modifier = Modifier.size(72.dp).clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.5f)),
-                        ) {
-                            Icon(
-                                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = stringResource(
-                                    if (isPlaying) R.string.player_pause else R.string.player_play,
-                                ),
-                                tint = Color.White,
-                                modifier = Modifier.size(36.dp),
-                            )
+                        if (playbackState == Player.STATE_BUFFERING) {
+                            // El spinner lo dibuja el overlay centrado; el hueco
+                            // mantiene la fila de transporte alineada.
+                            Spacer(Modifier.size(72.dp))
+                        } else {
+                            IconButton(
+                                onClick = {
+                                    player?.let { if (it.isPlaying) it.pause() else it.play() }
+                                },
+                                modifier = Modifier.size(72.dp).clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.5f)),
+                            ) {
+                                Icon(
+                                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    contentDescription = stringResource(
+                                        if (isPlaying) R.string.player_pause else R.string.player_play,
+                                    ),
+                                    tint = Color.White,
+                                    modifier = Modifier.size(36.dp),
+                                )
+                            }
                         }
                         Spacer(Modifier.width(28.dp))
                         if (state.isLive) {
