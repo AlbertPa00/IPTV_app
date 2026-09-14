@@ -58,15 +58,17 @@ class LiveTvViewModel @Inject constructor(
     private val _filters = MutableStateFlow(Filters())
     val filters: StateFlow<Filters> = _filters.asStateFlow()
 
+    // replay = MAX: al volver a la pestaña se re-emite el último valor sin
+    // parpadeo a vacío; el upstream igualmente descansa a los 5 s sin UI.
     private val activeSource: StateFlow<SourceEntity?> = sourceDao.observeActive()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), null)
 
     val categories: StateFlow<List<CategoryEntity>> = activeSource
         .flatMapLatest { source ->
             if (source == null) flowOf(emptyList())
             else categoryDao.observeBySource(source.id, ContentKind.TV.storageValue)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyList())
 
     /** Idiomas detectados en las categorías del origen activo (orden por nº de grupos). */
     val languages: StateFlow<List<Pair<String, Int>>> = categories
@@ -77,7 +79,7 @@ class LiveTvViewModel @Inject constructor(
                 .entries.sortedByDescending { it.value }
                 .map { it.key to it.value }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyList())
 
     private val clock = flow {
         while (true) {
@@ -109,7 +111,7 @@ class LiveTvViewModel @Inject constructor(
                     }
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyMap())
 
     // El texto de búsqueda se debilita para no reconstruir el Pager a cada
     // pulsación; el resto de filtros (favoritos, grupo) aplican al instante.

@@ -1,5 +1,11 @@
 package com.iptv.app
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -21,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -73,6 +80,14 @@ private val mainDestinations = listOf(
     MainDestination(Routes.Settings, R.string.nav_settings, Icons.Filled.Settings),
 )
 
+private val mainRoutes = mainDestinations.mapTo(HashSet()) { it.route }
+
+// Entre pestañas el cambio es instantáneo: el fundido de 700 ms que NavHost
+// aplica por defecto hacía el cambio de pestaña perceptiblemente lento. Al
+// abrir una ficha o el reproductor se mantiene un fundido corto.
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.isTabSwitch(): Boolean =
+    initialState.destination.route in mainRoutes && targetState.destination.route in mainRoutes
+
 @Composable
 fun IptvApp(viewModel: RootViewModel = hiltViewModel()) {
     val hasSources by viewModel.hasSources.collectAsStateWithLifecycle()
@@ -101,6 +116,10 @@ private fun AppNavigation(navController: NavHostController, startDestination: St
             navController = navController,
             startDestination = startDestination,
             modifier = Modifier.padding(innerPadding),
+            enterTransition = { if (isTabSwitch()) EnterTransition.None else fadeIn(tween(150)) },
+            exitTransition = { if (isTabSwitch()) ExitTransition.None else fadeOut(tween(150)) },
+            popEnterTransition = { if (isTabSwitch()) EnterTransition.None else fadeIn(tween(150)) },
+            popExitTransition = { if (isTabSwitch()) ExitTransition.None else fadeOut(tween(150)) },
         ) {
             composable(Routes.Welcome) {
                 WelcomeScreen(onStart = { navController.navigate(Routes.AddSource) })

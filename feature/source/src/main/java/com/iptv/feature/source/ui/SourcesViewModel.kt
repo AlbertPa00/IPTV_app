@@ -68,7 +68,8 @@ class SourcesViewModel @Inject constructor(
             noticeRes = noticeState?.first,
             noticeSections = noticeState?.second.orEmpty(),
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState())
+        // replay = MAX: al volver a la pestaña se re-emite el último estado.
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), UiState())
 
     fun setActive(id: Long) {
         viewModelScope.launch { repository.setActiveSource(id) }

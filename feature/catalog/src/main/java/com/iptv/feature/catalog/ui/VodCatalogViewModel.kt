@@ -127,15 +127,17 @@ class VodCatalogViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
+    // replay = MAX: al volver a la pestaña se re-emite el último valor sin
+    // parpadeo a vacío; el upstream igualmente descansa a los 5 s sin UI.
     private val activeSource: StateFlow<SourceEntity?> = sourceDao.observeActive()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), null)
 
     private val categories: StateFlow<List<CategoryEntity>> = activeSource
         .flatMapLatest { source ->
             if (source == null) flowOf(emptyList())
             else categoryDao.observeBySource(source.id, kind.storageValue)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyList())
 
     /** Idiomas detectados en las categorías del origen activo (orden por nº de grupos). */
     val languages: StateFlow<List<Pair<String, Int>>> = categories
@@ -146,17 +148,17 @@ class VodCatalogViewModel @Inject constructor(
                 .entries.sortedByDescending { it.value }
                 .map { it.key to it.value }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyList())
 
     private val language: StateFlow<String?> = _uiState
         .map { it.language }
         .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), null)
 
     val rows: StateFlow<List<BrowseRow>> = combine(activeSource, categories, language, ::Triple)
         .distinctUntilChanged()
         .flatMapLatest { (source, cats, lang) -> browseRows(source, cats, lang) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyList())
 
     private fun browseRows(
         source: SourceEntity?,

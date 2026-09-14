@@ -35,6 +35,8 @@ class GuideViewModel @Inject constructor(
         }
     }
 
+    // replay = MAX: al volver a la pestaña se re-emite la guía previa sin
+    // parpadeo a vacío mientras guideSnapshot vuelve a consultar.
     val guide: StateFlow<List<GuideRow>> = sourceDao.observeActive()
         .flatMapLatest { source ->
             if (source == null) {
@@ -48,7 +50,7 @@ class GuideViewModel @Inject constructor(
                     }
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyList())
 
     val syncState = MutableStateFlow<EpgSyncState?>(null)
 

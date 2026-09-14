@@ -56,15 +56,17 @@ class SettingsViewModel @Inject constructor(
     private val managingCategories = MutableStateFlow(false)
     private val pinDraft = MutableStateFlow<String?>(null)
 
+    // replay = MAX: al volver a la pestaña se re-emite el último valor sin
+    // parpadeo a vacío; el upstream igualmente descansa a los 5 s sin UI.
     private val categories = sourceDao.observeActive()
         .flatMapLatest { source ->
             if (source == null) flowOf(emptyList())
             else categoryDao.observeAllBySource(source.id)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyList())
 
     private val activeSource = sourceDao.observeActive()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), null)
 
     private val syncPrefs = combine(
         prefs.autoRefreshEnabled,
@@ -88,7 +90,7 @@ class SettingsViewModel @Inject constructor(
             pinError = error,
             managingCategories = managing,
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), UiState())
 
     fun setAutoRefresh(enabled: Boolean) {
         viewModelScope.launch {
