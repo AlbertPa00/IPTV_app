@@ -184,6 +184,7 @@ class CastProxyService : Service() {
         if (castContext?.sessionManager?.currentCastSession == null) {
             CastProxyRuntime.stopServer()
             CastProxyRuntime.clearPlaybackExtras()
+            CastPlayerRuntime.clearLoaded()
             stopSelf()
         }
     }

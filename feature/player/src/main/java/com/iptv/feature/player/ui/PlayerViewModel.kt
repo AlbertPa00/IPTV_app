@@ -20,7 +20,6 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import com.google.android.gms.cast.Cast
 import com.google.android.gms.cast.MediaError
-import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
@@ -34,9 +33,9 @@ import com.iptv.core.storage.entity.Kinds
 import com.iptv.core.storage.entity.PlaybackHistoryEntity
 import com.iptv.feature.player.R
 import com.iptv.feature.player.cast.CastMediaDecisions
+import com.iptv.feature.player.cast.CastPlayerRuntime
 import com.iptv.feature.player.cast.CastProxyRuntime
 import com.iptv.feature.player.cast.CastStreamProber
-import com.iptv.feature.player.cast.LiveAwareMediaItemConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -476,24 +475,21 @@ class PlayerViewModel @Inject constructor(
         )
 
     private fun initializeCastSafely() {
-        var createdPlayer: CastPlayer? = null
-        try {
-            val context = CastContext.getSharedInstance(appContext)
-            createdPlayer = CastPlayer(context, LiveAwareMediaItemConverter())
-            castContext = context
-            castPlayer = createdPlayer
-            createdPlayer.addListener(castListener)
-            createdPlayer.setSessionAvailabilityListener(sessionAvailabilityListener)
-            _uiState.update { it.copy(castButtonAvailable = true, castAvailable = true) }
-            if (createdPlayer.isCastSessionAvailable) startCasting()
-        } catch (_: Exception) {
-            createdPlayer?.setSessionAvailabilityListener(null)
-            createdPlayer?.removeListener(castListener)
-            createdPlayer?.release()
+        // El CastPlayer es de proceso (CastPlayerRuntime): sobrevive a esta
+        // pantalla para que emitir no muera al navegar hacia atrás.
+        val createdPlayer = CastPlayerRuntime.castPlayer(appContext)
+        if (createdPlayer == null) {
             castPlayer = null
             castContext = null
             _uiState.update { it.copy(castButtonAvailable = false, castAvailable = false) }
+            return
         }
+        castContext = CastPlayerRuntime.castContext()
+        castPlayer = createdPlayer
+        createdPlayer.addListener(castListener)
+        createdPlayer.setSessionAvailabilityListener(sessionAvailabilityListener)
+        _uiState.update { it.copy(castButtonAvailable = true, castAvailable = true) }
+        if (createdPlayer.isCastSessionAvailable) startCasting()
     }
 
     private fun startCasting() {
@@ -508,14 +504,17 @@ class PlayerViewModel @Inject constructor(
         publishCastExtras()
 
         // Re-entering the player while a cast is already running: adopt the
-        // session instead of reloading the stream on the TV.
+        // session instead of reloading the stream on the TV — but only when
+        // the receiver is on THIS stream; a different channel loads fresh.
         val remoteState = runCatching {
             castContext?.sessionManager?.currentCastSession
                 ?.remoteMediaClient?.mediaStatus?.playerState
         }.getOrNull()
-        if (remoteState == MediaStatus.PLAYER_STATE_PLAYING ||
-            remoteState == MediaStatus.PLAYER_STATE_BUFFERING ||
-            remoteState == MediaStatus.PLAYER_STATE_PAUSED
+        if (CastMediaDecisions.shouldAdoptRemotePlayback(
+                remoteState,
+                CastPlayerRuntime.loadedStreamUri,
+                item.localConfiguration?.uri?.toString(),
+            )
         ) {
             castTransferPending = false
             local.pause()
@@ -554,7 +553,7 @@ class PlayerViewModel @Inject constructor(
         hlsModeOverride: String? = null,
     ) {
         val remote = castPlayer ?: return
-        val originalUrl = item.localConfiguration?.uri.toString()
+        val originalUrl = item.localConfiguration?.uri?.toString() ?: return
         val isLive = item.liveConfiguration != MediaItem.LiveConfiguration.UNSET
         val target = withContext(Dispatchers.IO) {
             resolveCastTarget(originalUrl, isLive, hlsModeOverride)
@@ -584,7 +583,11 @@ class PlayerViewModel @Inject constructor(
             remote.playWhenReady = playWhenReady
             remote.setMediaItem(castItem, positionMs)
             remote.prepare()
+        }.onSuccess {
+            CastPlayerRuntime.markLoaded(originalUrl)
         }.onFailure { e ->
+            // La marca del receptor no se toca: si la carga falla el receptor
+            // puede seguir con el item anterior, que es lo que refleja.
             Log.e(TAG, "applyCastItem failed", e)
             castTransferPending = false
             CastProxyRuntime.stop(appContext)
@@ -660,6 +663,7 @@ class PlayerViewModel @Inject constructor(
 
     private fun stopCasting() {
         castTransferPending = false
+        CastPlayerRuntime.clearLoaded()
         if (_uiState.value.isCasting) {
             val remote = castPlayer
             val local = localPlayer
@@ -802,7 +806,8 @@ class PlayerViewModel @Inject constructor(
         observedCastSession = null
         castPlayer?.setSessionAvailabilityListener(null)
         castPlayer?.removeListener(castListener)
-        castPlayer?.release()
+        // El CastPlayer es de proceso (CastPlayerRuntime): release() cerraría
+        // la sesión Cast, que debe seguir viva al salir de esta pantalla.
         castPlayer = null
         localPlayer?.removeListener(localListener)
         localPlayer?.release()

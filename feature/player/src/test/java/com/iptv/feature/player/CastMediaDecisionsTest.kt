@@ -1,5 +1,6 @@
 package com.iptv.feature.player
 
+import com.google.android.gms.cast.MediaStatus
 import com.iptv.feature.player.cast.CastMediaDecisions
 import com.iptv.feature.player.cast.CastMediaDecisions.DirectCastCompatibility
 import com.iptv.feature.player.cast.CastStreamProber
@@ -83,6 +84,32 @@ class CastMediaDecisionsTest {
         // TARGETDURATION must cover the longest segment.
         assertTrue(playlist.contains("#EXT-X-TARGETDURATION:7"))
         assertFalse(playlist.contains("#EXT-X-ENDLIST"))
+    }
+
+    @Test
+    fun `running cast session is adopted only for the same stream`() {
+        val playing = MediaStatus.PLAYER_STATE_PLAYING
+        val paused = MediaStatus.PLAYER_STATE_PAUSED
+        val idle = MediaStatus.PLAYER_STATE_IDLE
+
+        // Re-entry on the same channel: keep the TV as-is.
+        assertTrue(
+            CastMediaDecisions.shouldAdoptRemotePlayback(playing, "http://tv/a", "http://tv/a"),
+        )
+        assertTrue(
+            CastMediaDecisions.shouldAdoptRemotePlayback(paused, "http://tv/a", "http://tv/a"),
+        )
+        // Channel change: the new stream must be loaded on the receiver.
+        assertFalse(
+            CastMediaDecisions.shouldAdoptRemotePlayback(playing, "http://tv/a", "http://tv/b"),
+        )
+        // Idle receiver or unknown loaded item: never adopt.
+        assertFalse(
+            CastMediaDecisions.shouldAdoptRemotePlayback(idle, "http://tv/a", "http://tv/a"),
+        )
+        assertFalse(
+            CastMediaDecisions.shouldAdoptRemotePlayback(playing, null, "http://tv/a"),
+        )
     }
 
     @Test

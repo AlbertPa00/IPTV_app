@@ -1,6 +1,7 @@
 package com.iptv.feature.player.cast
 
 import androidx.media3.common.MimeTypes
+import com.google.android.gms.cast.MediaStatus
 
 /** Pure decisions shared by local and Cast playback. */
 object CastMediaDecisions {
@@ -49,4 +50,21 @@ object CastMediaDecisions {
     }
 
     private val XTREAM_LIVE = Regex("""(/live/[^/]+/[^/]+/\d+)(?:\.[a-zA-Z0-9]+)?$""")
+
+    /**
+     * Whether an in-flight Cast session can be adopted without reloading:
+     * only when the receiver is actively on a stream AND that stream is
+     * the one this screen wants ([loadedStreamUri] == [itemStreamUri]).
+     * Any other case — idle receiver, or a different channel — must load
+     * fresh so changing channels actually changes what's on the TV.
+     */
+    fun shouldAdoptRemotePlayback(
+        remotePlayerState: Int?,
+        loadedStreamUri: String?,
+        itemStreamUri: String?,
+    ): Boolean =
+        (remotePlayerState == MediaStatus.PLAYER_STATE_PLAYING ||
+            remotePlayerState == MediaStatus.PLAYER_STATE_BUFFERING ||
+            remotePlayerState == MediaStatus.PLAYER_STATE_PAUSED) &&
+            loadedStreamUri != null && loadedStreamUri == itemStreamUri
 }
