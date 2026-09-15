@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">IPTV</string>
+    <string name="app_name">CeroCast</string>
     <string name="nav_live">TV</string>
     <string name="nav_movies">Movies</string>
     <string name="nav_series">Series</string>

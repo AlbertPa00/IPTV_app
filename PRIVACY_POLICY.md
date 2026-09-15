@@ -1,11 +1,11 @@
-# Política de privacidad / Privacy Policy
+# CeroCast — Política de privacidad / Privacy Policy
 
-Última actualización / Last updated: 2026-09-13
+Última actualización / Last updated: 2026-09-15
 
 ## Español
 
-**IPTV es un reproductor. No incluye, aloja ni distribuye contenido, listas de
-canales ni suscripciones.** Toda la información descrita a continuación se
+**CeroCast es un reproductor. No incluye, aloja ni distribuye contenido, listas
+de canales ni suscripciones.** Toda la información descrita a continuación se
 refiere exclusivamente a los datos que el propio usuario introduce en la app.
 
 ### Datos que almacena la app (sólo en el dispositivo)
@@ -21,7 +21,9 @@ refiere exclusivamente a los datos que el propio usuario introduce en la app.
 ### Datos que la app envía
 
 - La app **no envía datos personales a servidores propios**: no hay analytics,
-  publicidad, crash reporting de terceros ni cuentas de usuario.
+  publicidad ni cuentas de usuario. El informe de errores (Firebase
+  Crashlytics) está desactivado por defecto y sólo se activa si el usuario lo
+  habilita explícitamente en Ajustes.
 - Las únicas peticiones de red son las que realiza el propio usuario hacia
   **sus** proveedores: descarga de listas, peticiones a APIs Xtream, guías
   XMLTV y el propio streaming. Las credenciales viajan únicamente hacia el
@@ -60,9 +62,9 @@ Para dudas sobre esta política, abre un issue en el repositorio del proyecto.
 
 ## English
 
-**IPTV is a player. It does not include, host, or distribute content, channel
-lists, or subscriptions.** Everything below refers only to data the user
-enters into the app.
+**CeroCast is a player. It does not include, host, or distribute content,
+channel lists, or subscriptions.** Everything below refers only to data the
+user enters into the app.
 
 ### Data stored by the app (on-device only)
 
@@ -77,7 +79,8 @@ enters into the app.
 ### Data the app sends
 
 - The app **sends no personal data to its own servers**: no analytics, no ads,
-  no third-party crash reporting, no user accounts.
+  no user accounts. Crash reporting (Firebase Crashlytics) is disabled by
+  default and only runs if the user explicitly enables it in Settings.
 - The only network requests are those the user's own providers receive:
   playlist downloads, Xtream API calls, XMLTV guides, and streaming.
   Credentials travel only to the provider's server as configured by the user
