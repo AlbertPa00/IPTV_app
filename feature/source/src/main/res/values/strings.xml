@@ -20,6 +20,9 @@
     <string name="source_action_add_m3u">Añadir lista</string>
     <string name="source_or_file">O selecciona un archivo M3U/M3U8 del teléfono</string>
     <string name="source_action_select_file">Seleccionar archivo</string>
+    <string name="source_demo_hint">¿No tienes una lista? Carga canales públicos y gratuitos para probar la app.</string>
+    <string name="source_action_demo">Probar canales demo</string>
+    <string name="source_demo_name">Demo · canales gratuitos</string>
     <string name="source_action_login">Entrar</string>
     <string name="source_progress_connecting">Conectando…</string>
     <string name="source_progress_authenticating">Verificando tu cuenta…</string>

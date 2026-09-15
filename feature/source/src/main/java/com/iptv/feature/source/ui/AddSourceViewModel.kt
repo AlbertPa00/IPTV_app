@@ -76,6 +76,13 @@ class AddSourceViewModel @Inject constructor(
         }
     }
 
+    fun addDemoList(name: String) {
+        if (_uiState.value.busy) return
+        launchImport {
+            repository.addM3uUrl(name, DEMO_URL)
+        }
+    }
+
     fun loginXtream() {
         val state = _uiState.value
         if (state.busy) return
@@ -151,5 +158,9 @@ class AddSourceViewModel @Inject constructor(
     override fun onCleared() {
         job?.cancel()
         super.onCleared()
+    }
+
+    private companion object {
+        const val DEMO_URL = "https://iptv-org.github.io/iptv/countries/us.m3u"
     }
 }

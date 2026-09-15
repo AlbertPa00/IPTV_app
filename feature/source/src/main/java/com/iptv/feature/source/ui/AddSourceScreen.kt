@@ -13,11 +13,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -34,11 +36,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iptv.feature.source.R
 import com.iptv.feature.source.domain.SyncStep
@@ -55,6 +58,7 @@ fun AddSourceScreen(
     viewModel: AddSourceViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val demoName = stringResource(R.string.source_demo_name)
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.addM3uFile(it.toString()) }
     }
@@ -107,6 +111,7 @@ fun AddSourceScreen(
                     label = { Text(stringResource(R.string.source_field_name)) },
                     singleLine = true,
                     enabled = !state.busy,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
@@ -116,7 +121,7 @@ fun AddSourceScreen(
                     label = { Text(stringResource(R.string.source_field_url)) },
                     singleLine = true,
                     enabled = !state.busy,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(20.dp))
@@ -144,6 +149,23 @@ fun AddSourceScreen(
                     Icon(Icons.Filled.UploadFile, contentDescription = null)
                     Text(stringResource(R.string.source_action_select_file))
                 }
+                Spacer(Modifier.height(20.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.source_demo_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { viewModel.addDemoList(demoName) },
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Filled.LiveTv, contentDescription = null)
+                    Text(stringResource(R.string.source_action_demo))
+                }
             } else {
                 OutlinedTextField(
                     value = state.server,
@@ -151,7 +173,7 @@ fun AddSourceScreen(
                     label = { Text(stringResource(R.string.source_field_server)) },
                     singleLine = true,
                     enabled = !state.busy,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
@@ -161,6 +183,7 @@ fun AddSourceScreen(
                     label = { Text(stringResource(R.string.source_field_username)) },
                     singleLine = true,
                     enabled = !state.busy,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
@@ -171,7 +194,7 @@ fun AddSourceScreen(
                     singleLine = true,
                     enabled = !state.busy,
                     visualTransformation = if (state.showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
                     trailingIcon = {
                         IconButton(onClick = viewModel::onTogglePassword) {
                             Icon(
@@ -189,6 +212,7 @@ fun AddSourceScreen(
                     label = { Text(stringResource(R.string.source_field_name)) },
                     singleLine = true,
                     enabled = !state.busy,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(20.dp))

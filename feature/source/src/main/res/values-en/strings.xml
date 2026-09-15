@@ -20,6 +20,9 @@
     <string name="source_action_add_m3u">Add playlist</string>
     <string name="source_or_file">Or select an M3U/M3U8 file from your phone</string>
     <string name="source_action_select_file">Select file</string>
+    <string name="source_demo_hint">No playlist yet? Load free public channels to try the app.</string>
+    <string name="source_action_demo">Try demo channels</string>
+    <string name="source_demo_name">Demo · free channels</string>
     <string name="source_action_login">Sign in</string>
     <string name="source_progress_connecting">Connecting…</string>
     <string name="source_progress_authenticating">Verifying your account…</string>
