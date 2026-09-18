@@ -6,6 +6,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.storage.dao.CategoryDao
 import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.GuideRow
@@ -18,7 +19,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,13 +28,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Sección TV en directo: lista de canales paginada con favoritos, grupos,
@@ -43,9 +48,10 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class LiveTvViewModel @Inject constructor(
     private val channelDao: ChannelDao,
+    private val programmeDao: ProgrammeDao,
+    private val appPreferences: AppPreferences,
     categoryDao: CategoryDao,
     sourceDao: SourceDao,
-    programmeDao: ProgrammeDao,
 ) : ViewModel() {
 
     data class Filters(
@@ -57,6 +63,15 @@ class LiveTvViewModel @Inject constructor(
 
     private val _filters = MutableStateFlow(Filters())
     val filters: StateFlow<Filters> = _filters.asStateFlow()
+
+    /** Pista única de primer uso ("toca un canal"): visible hasta que se marca vista. */
+    val showQuickHint: StateFlow<Boolean> = appPreferences.liveHintSeen
+        .map { seen -> !seen }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun markQuickHintSeen() {
+        appPreferences.setLiveHintSeen()
+    }
 
     // replay = MAX: al volver a la pestaña se re-emite el último valor sin
     // parpadeo a vacío; el upstream igualmente descansa a los 5 s sin UI.
@@ -81,13 +96,6 @@ class LiveTvViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyList())
 
-    private val clock = flow {
-        while (true) {
-            emit(System.currentTimeMillis())
-            delay(60_000)
-        }
-    }
-
     /** EPG por canal para pintar "ahora / a continuación" sin consultas por fila. */
     val guideByChannel: StateFlow<Map<Long, GuideRow>> = activeSource
         .flatMapLatest { source ->
@@ -95,23 +103,38 @@ class LiveTvViewModel @Inject constructor(
                 flowOf(emptyMap())
             } else {
                 // La guía se compone con consultas agregadas + join en memoria
-                // (guideSnapshot); el EXISTS evita lanzarla en orígenes sin EPG
-                // y distinctUntilChanged frena los re-disparos durante importaciones.
+                // (guideSnapshot); el EXISTS evita lanzarla en orígenes sin EPG.
                 programmeDao.observeHasProgrammes(source.id)
                     .distinctUntilChanged()
                     .flatMapLatest { has ->
-                        if (!has) {
-                            flowOf(emptyMap())
-                        } else {
-                            clock.map { now ->
-                                programmeDao.guideSnapshot(source.id, now)
-                                    .associateBy(GuideRow::channelId)
-                            }
-                        }
+                        if (!has) flowOf(emptyMap()) else guideMap(source.id)
                     }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyMap())
+
+    /**
+     * Recalcula sólo cuando la guía puede cambiar: al llegar el borde de un
+     * programa (fin del actual / inicio del siguiente) o cuando la tabla se
+     * reescribe (importación EPG, detectada por la marca de agua). Sin sondeo
+     * fijo: la pantalla anima el progreso con su propio reloj.
+     */
+    private fun guideMap(sourceId: Long): Flow<Map<Long, GuideRow>> = flow {
+        while (currentCoroutineContext().isActive) {
+            val now = System.currentTimeMillis()
+            val rows = programmeDao.guideSnapshot(sourceId, now)
+            emit(rows.associateBy(GuideRow::channelId))
+            val wakeIn = rows.asSequence()
+                .flatMap { sequenceOf(it.currentEndUtc, it.nextStartUtc) }
+                .filterNotNull()
+                .map { it - now }
+                .filter { it > 0 }
+                .minOrNull() ?: MAX_TICK_MS
+            withTimeoutOrNull(wakeIn.coerceIn(MIN_TICK_MS, MAX_TICK_MS)) {
+                programmeDao.observeWatermark(sourceId).drop(1).debounce(5_000).first()
+            }
+        }
+    }
 
     // El texto de búsqueda se debilita para no reconstruir el Pager a cada
     // pulsación; el resto de filtros (favoritos, grupo) aplican al instante.
@@ -131,11 +154,22 @@ class LiveTvViewModel @Inject constructor(
             } else {
                 Pager(PagingConfig(pageSize = 60, initialLoadSize = 120)) {
                     when {
-                        filters.query.isNotBlank() -> channelDao.pagingBySearch(
-                            source.id,
-                            ContentKind.TV.storageValue,
-                            filters.query.toLikePattern(),
-                        )
+                        filters.query.isNotBlank() -> {
+                            val match = filters.query.toFtsMatch()
+                            if (match.isBlank()) {
+                                channelDao.pagingBySearch(
+                                    source.id,
+                                    ContentKind.TV.storageValue,
+                                    filters.query.toLikePattern(),
+                                )
+                            } else {
+                                channelDao.pagingByFts(
+                                    source.id,
+                                    ContentKind.TV.storageValue,
+                                    match,
+                                )
+                            }
+                        }
                         filters.favoritesOnly -> channelDao.pagingFavorites(
                             source.id,
                             ContentKind.TV.storageValue,
@@ -151,10 +185,9 @@ class LiveTvViewModel @Inject constructor(
                         )
                         else -> channelDao.pagingBySource(source.id, ContentKind.TV.storageValue)
                     }
-                }.flow
+                }.flow.cachedIn(viewModelScope)
             }
         }
-        .cachedIn(viewModelScope)
 
     fun selectAll() {
         _filters.update { it.copy(favoritesOnly = false, categoryId = null, language = null, query = "") }
@@ -180,5 +213,11 @@ class LiveTvViewModel @Inject constructor(
         viewModelScope.launch {
             channelDao.setFavorite(channel.id, !channel.isFavorite)
         }
+    }
+
+    private companion object {
+        /** Sueño mínimo entre recálculos y techo cuando no hay borde próximo. */
+        const val MIN_TICK_MS = 1_000L
+        const val MAX_TICK_MS = 10 * 60_000L
     }
 }

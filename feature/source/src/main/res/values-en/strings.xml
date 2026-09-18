@@ -4,7 +4,15 @@
     <string name="welcome_title">Your IPTV, made simple</string>
     <string name="welcome_body">Add your provider playlist or sign in with your username and password and start zapping in seconds.</string>
     <string name="welcome_legal">This app does not include playlists or channels: use the ones you already have from your provider.</string>
-    <string name="welcome_start">Get started</string>
+    <string name="onboarding_skip">Skip</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_try_title">Try it in one tap</string>
+    <string name="onboarding_try_body">Load a public list of free channels and start zapping right now. You can delete it anytime from Settings.</string>
+    <string name="onboarding_own_source">I have my playlist or account</string>
+    <string name="onboarding_done_title">All set!</string>
+    <string name="onboarding_done_body">You have channels to try. Tap any of them to watch: mark favorites with the star and switch channels with the zap buttons.</string>
+    <string name="onboarding_watch">Watch channels</string>
+    <string name="settings_tutorial">View tutorial again</string>
 
     <!-- Add source -->
     <string name="source_add_title">Add source</string>

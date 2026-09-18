@@ -2,6 +2,7 @@ package com.iptv.app
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.storage.dao.ProgrammeDao
 import com.iptv.core.storage.dao.SourceDao
 import com.iptv.feature.epg.data.EpgRepository
@@ -21,12 +22,22 @@ import javax.inject.Inject
 class RootViewModel @Inject constructor(
     sourceDao: SourceDao,
     private val programmeDao: ProgrammeDao,
+    private val appPreferences: AppPreferences,
     epgRepository: EpgRepository,
 ) : ViewModel() {
 
     val hasSources: StateFlow<Boolean?> = sourceDao.observeCount()
         .map<Int, Boolean?> { it > 0 }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Null hasta que las preferencias emiten: evita decidir el arranque a ciegas. */
+    val onboardingCompleted: StateFlow<Boolean?> = appPreferences.onboardingCompleted
+        .map<Boolean, Boolean?> { it }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun completeOnboarding() {
+        appPreferences.setOnboardingCompleted(true)
+    }
 
     init {
         // La EPG se refresca sola cuando el catálogo de la fuente activa

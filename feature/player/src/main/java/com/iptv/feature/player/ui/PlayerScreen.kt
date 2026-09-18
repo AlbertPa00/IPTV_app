@@ -3,12 +3,14 @@ package com.iptv.feature.player.ui
 import android.Manifest
 import android.app.Activity
 import android.app.PictureInPictureParams
+import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.os.Build
 import android.os.SystemClock
 import android.util.Rational
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,6 +19,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -64,6 +67,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -82,15 +86,17 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -100,7 +106,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -112,22 +118,27 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import coil.compose.AsyncImage
+import com.iptv.core.designsystem.components.IptvAsyncImage
 import com.iptv.core.designsystem.components.LoadingState
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.feature.player.R
 import com.iptv.feature.player.cast.CastRouteButton
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-private val PlayerCarmine = Color(0xFFE5093D)
-private val PlayerGraphite = Color(0xFF17191E)
-private val PlayerMuted = Color(0xFFB8BAC0)
+private val PlayerCarmine: Color
+    @Composable get() = MaterialTheme.colorScheme.primary
+private val PlayerGraphite: Color
+    @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+private val PlayerMuted: Color
+    @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 
 /** Tipo de ajuste por deslizamiento vertical: brillo (izquierda) o volumen. */
 private enum class GestureKind { BRIGHTNESS, VOLUME }
 private data class GestureHud(val kind: GestureKind, val fraction: Float)
+private data class SeekHud(val text: String, val left: Boolean)
 
 /** Pantalla completa cuyos controles operan sobre el Player local o remoto activo. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -145,7 +156,10 @@ fun PlayerScreen(
     var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
+    var bufferedMs by remember { mutableLongStateOf(0L) }
     var scrubFraction by remember { mutableStateOf<Float?>(null) }
+    var seekHud by remember { mutableStateOf<SeekHud?>(null) }
+    var seekHudJob by remember { mutableStateOf<Job?>(null) }
     var channelListVisible by remember { mutableStateOf(false) }
     val channelList by viewModel.channelList.collectAsStateWithLifecycle()
     val hasChannelList by viewModel.hasChannelList.collectAsStateWithLifecycle()
@@ -159,13 +173,25 @@ fun PlayerScreen(
     var tracksDialogVisible by remember { mutableStateOf(false) }
     var tracksTick by remember { mutableStateOf(0) }
     var resizeMode by remember { mutableStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
-    var askedMediaPerms by rememberSaveable { mutableStateOf(false) }
     var sleepDialogVisible by remember { mutableStateOf(false) }
     var gestureHud by remember { mutableStateOf<GestureHud?>(null) }
 
     val activity = remember(context) { context.findActivity() }
     val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
     val hudScope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    val a11yManager = remember(context) { context.getSystemService(AccessibilityManager::class.java) }
+    var touchExploration by remember { mutableStateOf(a11yManager?.isTouchExplorationEnabled == true) }
+
+    // TalkBack activo: los controles no se auto-ocultan ni el vídeo responde
+    // a gestos ambiguos mientras el lector de pantalla está explorando.
+    DisposableEffect(a11yManager) {
+        val listener = AccessibilityManager.TouchExplorationStateChangeListener { enabled ->
+            touchExploration = enabled
+        }
+        a11yManager?.addTouchExplorationStateChangeListener(listener)
+        onDispose { a11yManager?.removeTouchExplorationStateChangeListener(listener) }
+    }
 
     fun readBrightness(): Float =
         activity?.window?.attributes?.screenBrightness?.takeIf { it >= 0f } ?: 0.5f
@@ -216,13 +242,14 @@ fun PlayerScreen(
 
     // Android 13+: el servicio de Cast publica notificación de control y la
     // búsqueda de dispositivos usa NEARBY_WIFI_DEVICES. Se piden en contexto,
-    // la primera vez que el botón de Cast está disponible.
+    // la primera vez que el botón de Cast está disponible; el flag persiste
+    // para no re-pedirlos en cada arranque si el usuario los rechaza.
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { }
     LaunchedEffect(state.castButtonAvailable) {
-        if (state.castButtonAvailable && !askedMediaPerms && Build.VERSION.SDK_INT >= 33) {
-            askedMediaPerms = true
+        if (state.castButtonAvailable && Build.VERSION.SDK_INT >= 33 && !viewModel.wasMediaPermsAsked()) {
+            viewModel.markMediaPermsAsked()
             permissionLauncher.launch(
                 arrayOf(
                     Manifest.permission.POST_NOTIFICATIONS,
@@ -236,25 +263,29 @@ fun PlayerScreen(
         val window = activity?.window
         val controller = window?.let { WindowInsetsControllerCompat(it, it.decorView) }
         if (fullscreen) {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             controller?.hide(WindowInsetsCompat.Type.systemBars())
             controller?.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         } else {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
         onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 
-    // Posición y duración para la barra de progreso en contenido bajo demanda.
+    // Posición, búfer y duración para la barra de progreso en VOD.
     LaunchedEffect(player, state.isLive) {
         while (true) {
             if (!state.isLive) {
                 positionMs = player?.currentPosition?.coerceAtLeast(0L) ?: 0L
+                bufferedMs = player?.bufferedPosition?.coerceAtLeast(0L) ?: 0L
                 val d = player?.duration ?: 0L
                 durationMs = if (d > 0) d else 0L
             }
@@ -264,33 +295,43 @@ fun PlayerScreen(
 
     // PiP: al salir con Home se minimiza si hay reproducción local en curso.
     // Durante Cast no tiene sentido: el PiP mostraría una ventana negra.
-    LaunchedEffect(isPlaying, state.isCasting) {
-        viewModel.setPipAutoEnter(isPlaying && !state.isCasting)
+    fun syncPipAutoEnter(enabled: Boolean) {
+        viewModel.setPipAutoEnter(enabled)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             runCatching {
                 activity?.setPictureInPictureParams(
                     PictureInPictureParams.Builder()
                         .setAspectRatio(Rational(16, 9))
-                        .setAutoEnterEnabled(isPlaying && !state.isCasting)
+                        .setAutoEnterEnabled(enabled)
                         .build(),
                 )
             }
         }
     }
 
+    LaunchedEffect(isPlaying, state.isCasting) {
+        syncPipAutoEnter(isPlaying && !state.isCasting)
+    }
+
     // Sincroniza el volumen del receptor al entrar en modo Cast.
     LaunchedEffect(state.isCasting) {
         if (state.isCasting) viewModel.refreshCastVolume()
     }
+    // Al salir de la pantalla hay que desarmar también el autoEnter de la
+    // Activity: si queda activo, salir de la app desde otra pantalla abre
+    // un PiP vacío aunque ya no se esté reproduciendo nada.
     DisposableEffect(Unit) {
-        onDispose { viewModel.setPipAutoEnter(false) }
+        onDispose { syncPipAutoEnter(false) }
     }
 
     // Auto-ocultado de controles mientras se reproduce (como en cualquier
-    // reproductor moderno); pausado, al arrastrar la barra o con la lista de
-    // canales abierta permanecen visibles.
-    LaunchedEffect(controlsVisible, isPlaying, fullscreen, scrubFraction == null, channelListVisible) {
-        if (controlsVisible && isPlaying && scrubFraction == null && !channelListVisible) {
+    // reproductor moderno); pausado, al arrastrar la barra, con la lista de
+    // canales abierta o con TalkBack activo permanecen visibles.
+    LaunchedEffect(
+        controlsVisible, isPlaying, fullscreen,
+        scrubFraction == null, channelListVisible, touchExploration,
+    ) {
+        if (controlsVisible && isPlaying && scrubFraction == null && !channelListVisible && !touchExploration) {
             delay(CONTROLS_HIDE_DELAY_MS)
             controlsVisible = false
         }
@@ -338,6 +379,16 @@ fun PlayerScreen(
                             val delta = if (offset.x < size.width / 2f) -SEEK_STEP_MS else SEEK_STEP_MS
                             player?.let {
                                 it.seekTo((it.currentPosition + delta).coerceIn(0L, durationMs))
+                            }
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            seekHud = SeekHud(
+                                text = if (delta < 0) "-10 s" else "+10 s",
+                                left = delta < 0,
+                            )
+                            seekHudJob?.cancel()
+                            seekHudJob = hudScope.launch {
+                                delay(SEEK_HUD_MS)
+                                seekHud = null
                             }
                         } else {
                             controlsVisible = !controlsVisible
@@ -426,6 +477,24 @@ fun PlayerScreen(
             }
         }
 
+        // Confirmación breve del salto ±10 s en el lado donde se tocó.
+        seekHud?.let { hud ->
+            Surface(
+                color = Color.Black.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .align(if (hud.left) Alignment.CenterStart else Alignment.CenterEnd)
+                    .padding(24.dp),
+            ) {
+                Text(
+                    text = hud.text,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                )
+            }
+        }
+
         // Emitiendo: la superficie de vídeo queda negra en el teléfono porque
         // el contenido va a la TV. Se muestra una pantalla informativa con el
         // canal, el dispositivo y el control de volumen siempre accesible.
@@ -441,12 +510,45 @@ fun PlayerScreen(
             )
         }
 
+        // Negociación Cast: desde que el usuario elige el dispositivo hasta
+        // que el receptor confirma la carga pueden pasar segundos; sin este
+        // indicador no se percibe que la emisión está en curso.
+        if (state.isCastConnecting && !state.isCasting && !isInPipMode) {
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator(color = PlayerCarmine)
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.Cast,
+                        contentDescription = null,
+                        tint = PlayerMuted,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.player_cast_connecting,
+                            state.castDeviceName
+                                ?: stringResource(R.string.player_cast_device),
+                        ),
+                        color = PlayerMuted,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+
         // Un stream que no arranca dejaba la pantalla negra sin feedback:
         // mientras bufferiza se muestra un indicador, visible aunque los
         // controles estén ocultos; el vigía del ViewModel lo convierte en
         // error si la espera se alarga demasiado.
         if (playbackState == Player.STATE_BUFFERING && !isInPipMode &&
-            !state.isCasting && state.errorRes == null
+            !state.isCasting && !state.isCastConnecting && state.errorRes == null
         ) {
             Column(
                 modifier = Modifier.align(Alignment.Center),
@@ -512,6 +614,7 @@ fun PlayerScreen(
                         IconButton(
                             onClick = {
                                 controlsVisible = true
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 viewModel.toggleFavorite()
                             },
                             modifier = Modifier.size(48.dp).clip(CircleShape)
@@ -649,6 +752,7 @@ fun PlayerScreen(
                             IconButton(
                                 onClick = {
                                     controlsVisible = true
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     viewModel.playAdjacent(-1)
                                 },
                                 modifier = Modifier.size(56.dp).clip(CircleShape)
@@ -709,6 +813,7 @@ fun PlayerScreen(
                             IconButton(
                                 onClick = {
                                     controlsVisible = true
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     viewModel.playAdjacent(1)
                                 },
                                 modifier = Modifier.size(56.dp).clip(CircleShape)
@@ -747,6 +852,7 @@ fun PlayerScreen(
                     SeekBar(
                         positionMs = positionMs,
                         durationMs = durationMs,
+                        bufferedFraction = (bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f),
                         scrubFraction = scrubFraction,
                         onScrub = { scrubFraction = it },
                         onScrubFinished = { fraction ->
@@ -810,10 +916,12 @@ fun PlayerScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SeekBar(
     positionMs: Long,
     durationMs: Long,
+    bufferedFraction: Float,
     scrubFraction: Float?,
     onScrub: (Float) -> Unit,
     onScrubFinished: (Float) -> Unit,
@@ -832,11 +940,28 @@ private fun SeekBar(
             value = shownFraction,
             onValueChange = onScrub,
             onValueChangeFinished = { onScrubFinished(shownFraction) },
-            colors = SliderDefaults.colors(
-                thumbColor = PlayerCarmine,
-                activeTrackColor = PlayerCarmine,
-                inactiveTrackColor = PlayerGraphite,
-            ),
+            colors = SliderDefaults.colors(thumbColor = PlayerCarmine),
+            // Pista propia: fondo grafito, tramo bufferizado en gris y lo
+            // reproducido en carmín (muestra la salud del stream).
+            track = { sliderState ->
+                val trackColor = PlayerGraphite
+                val bufferedColor = PlayerMuted.copy(alpha = 0.35f)
+                val playedColor = PlayerCarmine
+                Canvas(Modifier.fillMaxWidth().height(3.dp)) {
+                    val radius = CornerRadius(size.height / 2f)
+                    drawRoundRect(trackColor, size = size, cornerRadius = radius)
+                    drawRoundRect(
+                        bufferedColor,
+                        size = size.copy(width = size.width * bufferedFraction.coerceIn(0f, 1f)),
+                        cornerRadius = radius,
+                    )
+                    drawRoundRect(
+                        playedColor,
+                        size = size.copy(width = size.width * sliderState.value.coerceIn(0f, 1f)),
+                        cornerRadius = radius,
+                    )
+                }
+            },
             modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
         )
         Text(
@@ -855,6 +980,7 @@ private fun ChannelListPanel(
     onSelect: (Long) -> Unit,
     onClose: () -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
     Surface(
         color = Color(0xF20F1014),
         modifier = Modifier.fillMaxHeight().width(340.dp)
@@ -866,7 +992,10 @@ private fun ChannelListPanel(
                 Row(
                     modifier = Modifier.fillMaxWidth()
                         .background(if (isCurrent) PlayerCarmine.copy(alpha = 0.18f) else Color.Transparent)
-                        .clickable { onSelect(channel.id) }
+                        .clickable {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onSelect(channel.id)
+                        }
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -875,7 +1004,7 @@ private fun ChannelListPanel(
                             .background(PlayerGraphite),
                         contentAlignment = Alignment.Center,
                     ) {
-                        AsyncImage(
+                        IptvAsyncImage(
                             model = channel.logoUrl,
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize().padding(3.dp),
@@ -935,7 +1064,7 @@ private fun CastBackdrop(
                         modifier = Modifier.size(40.dp),
                     )
                 } else {
-                    AsyncImage(
+                    IptvAsyncImage(
                         model = state.channel?.logoUrl,
                         contentDescription = state.channel?.name,
                         modifier = Modifier.fillMaxSize().padding(10.dp),
@@ -1039,6 +1168,7 @@ private fun formatDuration(ms: Long): String {
 private const val CONTROLS_HIDE_DELAY_MS = 4_000L
 private const val SEEK_STEP_MS = 10_000L
 private const val GESTURE_HUD_MS = 900L
+private const val SEEK_HUD_MS = 700L
 
 private fun Activity.enterPip() {
     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return

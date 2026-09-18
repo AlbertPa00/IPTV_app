@@ -9,4 +9,6 @@
     <string name="series_play_episode">Play %1$s</string>
     <string name="series_no_episodes">No episodes available.</string>
     <string name="series_duration">Duration: %1$s</string>
+    <string name="series_error_load">Couldn\'t load the series.</string>
+    <string name="series_error_play">Couldn\'t open the episode.</string>
 </resources>

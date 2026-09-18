@@ -8,4 +8,6 @@
     <string name="series_play_episode">Reproducir %1$s</string>
     <string name="series_no_episodes">No hay episodios disponibles.</string>
     <string name="series_duration">Duración: %1$s</string>
+    <string name="series_error_load">No se pudo cargar la serie.</string>
+    <string name="series_error_play">No se pudo abrir el episodio.</string>
 </resources>

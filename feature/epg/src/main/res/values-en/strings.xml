@@ -6,6 +6,11 @@
     <string name="epg_retry">Retry</string>
     <string name="epg_syncing">Importing guide… %1$d programmes</string>
     <string name="epg_empty">There is no guide data yet. Sync your provider EPG.</string>
+    <string name="epg_empty_favorites">None of your favorite channels has guide data.</string>
+    <string name="epg_favorites">Favorites</string>
+    <string name="epg_sort_provider">Provider order</string>
+    <string name="epg_sort_name">Name A-Z</string>
+    <string name="epg_sort_favorites">Favorites first</string>
     <string name="epg_no_current">No current programme information</string>
     <string name="epg_next">Next · %1$s  %2$s</string>
     <string name="epg_error_no_source">There is no active source.</string>

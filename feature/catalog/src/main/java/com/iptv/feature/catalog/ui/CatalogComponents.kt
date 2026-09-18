@@ -19,11 +19,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -31,6 +35,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -49,25 +54,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
-import coil.compose.AsyncImage
+import com.iptv.core.designsystem.components.IptvAsyncImage
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.feature.catalog.R
 
-internal val CinemaBlack = Color(0xFF08090B)
-internal val Graphite = Color(0xFF15171B)
-internal val GraphiteLight = Color(0xFF22252B)
-internal val Carmine = Color(0xFFE50914)
-internal val MutedText = Color(0xFFB6B8BE)
-internal val StarGold = Color(0xFFF5B50A)
+// Alias semánticos sobre el esquema del tema: una sola paleta en toda la app.
+internal val CinemaBlack: Color @Composable get() = MaterialTheme.colorScheme.background
+internal val Graphite: Color @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+internal val GraphiteLight: Color @Composable get() = MaterialTheme.colorScheme.secondaryContainer
+internal val Carmine: Color @Composable get() = MaterialTheme.colorScheme.primary
+internal val MutedText: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 
 /** Cabecera con título, subtítulo y campo de búsqueda, común a las secciones. */
 @Composable
@@ -96,12 +106,26 @@ internal fun CatalogHeader(
             style = MaterialTheme.typography.bodyMedium,
         )
         Spacer(Modifier.height(16.dp))
+        val keyboardController = LocalSoftwareKeyboardController.current
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = { Text(stringResource(searchHint)) },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { onQueryChange("") }) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.catalog_clear_search),
+                            tint = MutedText,
+                        )
+                    }
+                }
+            },
             singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
             shape = CircleShape,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = Color.White,
@@ -159,6 +183,7 @@ internal fun PosterCard(
     modifier: Modifier = Modifier,
     progress: Float? = null,
 ) {
+    val haptics = LocalHapticFeedback.current
     Card(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
@@ -167,7 +192,7 @@ internal fun PosterCard(
         modifier = modifier.aspectRatio(2f / 3f),
     ) {
         Box(Modifier.fillMaxSize().background(GraphiteLight)) {
-            AsyncImage(
+            IptvAsyncImage(
                 model = item.logoUrl,
                 contentDescription = item.name,
                 contentScale = ContentScale.Crop,
@@ -181,7 +206,10 @@ internal fun PosterCard(
                 ),
             )
             IconButton(
-                onClick = onToggleFavorite,
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onToggleFavorite()
+                },
                 modifier = Modifier.align(Alignment.TopEnd).size(48.dp),
             ) {
                 Icon(
@@ -238,6 +266,40 @@ internal fun PosterGrid(
                 )
             }
         }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            PagingAppendState(content.loadState.append) { content.retry() }
+        }
+    }
+}
+
+/**
+ * Pie de lista para la página siguiente: progreso discreto al cargar y
+ * mensaje con reintento si falla (antes una página fallida quedaba muda).
+ */
+@Composable
+internal fun PagingAppendState(state: LoadState, onRetry: () -> Unit) {
+    when (state) {
+        is LoadState.Loading -> Box(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(Modifier.size(26.dp), color = Carmine, strokeWidth = 2.dp)
+        }
+        is LoadState.Error -> Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.catalog_paging_error),
+                color = MutedText,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = onRetry) {
+                Text(stringResource(com.iptv.core.designsystem.R.string.ds_retry), color = Carmine)
+            }
+        }
+        else -> Unit
     }
 }
 
@@ -254,7 +316,7 @@ internal fun ChannelLogo(
         if (logoUrl.isNullOrBlank()) {
             Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Carmine, modifier = Modifier.size(32.dp))
         } else {
-            AsyncImage(
+            IptvAsyncImage(
                 model = logoUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Fit,

@@ -19,9 +19,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,19 +40,20 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
 import com.iptv.core.designsystem.components.EmptyState
+import com.iptv.core.designsystem.components.IptvAsyncImage
 import com.iptv.core.designsystem.components.ErrorState
 import com.iptv.core.designsystem.components.LoadingState
 import com.iptv.feature.series.R
 import com.iptv.feature.series.data.SeriesDetails
 import com.iptv.feature.series.data.SeriesEpisode
 
-private val NetflixRed = Color(0xFFE50914)
-private val PageBackground = Color(0xFF0B0B0B)
-private val CardBackground = Color(0xFF1B1B1B)
+private val AccentRed: Color @Composable get() = MaterialTheme.colorScheme.primary
+private val PageBackground: Color @Composable get() = MaterialTheme.colorScheme.background
+private val CardBackground: Color @Composable get() = MaterialTheme.colorScheme.surfaceVariant
+private val MutedText: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
 
 @Composable
 fun SeriesDetailsScreen(
@@ -66,7 +67,7 @@ fun SeriesDetailsScreen(
     Box(Modifier.fillMaxSize().background(PageBackground)) {
         when {
             state.loading -> LoadingState()
-            state.error != null -> ErrorState(state.error!!, onRetry = viewModel::load)
+            state.errorRes != null -> ErrorState(stringResource(state.errorRes!!), onRetry = viewModel::load)
             state.details != null -> SeriesContent(
                 details = state.details!!,
                 selectedSeason = state.selectedSeason,
@@ -74,7 +75,7 @@ fun SeriesDetailsScreen(
                 onSelectSeason = viewModel::selectSeason,
                 onPlayEpisode = viewModel::play,
             )
-            else -> ErrorState("Error al cargar la serie", onRetry = viewModel::load)
+            else -> ErrorState(stringResource(R.string.series_error_load), onRetry = viewModel::load)
         }
         IconButton(onClick = onBack, modifier = Modifier.padding(8.dp).background(Color.Black.copy(alpha = .65f))) {
             Icon(
@@ -97,7 +98,7 @@ private fun SeriesContent(
     val selected = details.seasons.firstOrNull { it.number == selectedSeason }
     LazyColumn(Modifier.fillMaxSize()) {
         item {
-            AsyncImage(
+            IptvAsyncImage(
                 model = details.coverUrl,
                 contentDescription = stringResource(R.string.series_cover_description, details.title),
                 contentScale = ContentScale.Crop,
@@ -106,14 +107,16 @@ private fun SeriesContent(
             Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                 Text(details.title, color = Color.White, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                 details.rating?.let {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(stringResource(R.string.series_rating, it)) },
+                    Text(
+                        text = stringResource(R.string.series_rating, it),
+                        color = AccentRed,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 8.dp),
                     )
                 }
                 details.plot?.let {
-                    Text(it, color = Color(0xFFD0D0D0), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
+                    Text(it, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
                 }
                 Text(
                     stringResource(R.string.series_seasons),
@@ -131,6 +134,12 @@ private fun SeriesContent(
                         selected = season.number == selectedSeason,
                         onClick = { onSelectSeason(season.number) },
                         label = { Text(season.title) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = CardBackground,
+                            labelColor = MutedText,
+                            selectedContainerColor = AccentRed,
+                            selectedLabelColor = Color.White,
+                        ),
                     )
                 }
             }
@@ -165,11 +174,11 @@ private fun EpisodeRow(episode: SeriesEpisode, preparing: Boolean, onPlay: (Seri
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AsyncImage(
+        IptvAsyncImage(
             model = episode.imageUrl,
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.size(width = 128.dp, height = 72.dp).background(Color.DarkGray),
+            modifier = Modifier.size(width = 128.dp, height = 72.dp).background(CardBackground),
         )
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             Text(
@@ -179,10 +188,10 @@ private fun EpisodeRow(episode: SeriesEpisode, preparing: Boolean, onPlay: (Seri
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            episode.duration?.let { Text(stringResource(R.string.series_duration, it), color = Color.LightGray, style = MaterialTheme.typography.bodySmall) }
-            episode.plot?.let { Text(it, color = Color.Gray, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            episode.duration?.let { Text(stringResource(R.string.series_duration, it), color = MutedText, style = MaterialTheme.typography.bodySmall) }
+            episode.plot?.let { Text(it, color = MutedText, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
-        if (preparing) CircularProgressIndicator(Modifier.size(30.dp), color = NetflixRed)
-        else Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = NetflixRed, modifier = Modifier.size(36.dp))
+        if (preparing) CircularProgressIndicator(Modifier.size(30.dp), color = AccentRed)
+        else Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = AccentRed, modifier = Modifier.size(36.dp))
     }
 }

@@ -6,7 +6,7 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.media3.cast.CastPlayer
+import androidx.media3.cast.RemoteCastPlayer
 import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -22,11 +22,13 @@ import com.google.android.gms.cast.Cast
 import com.google.android.gms.cast.MediaError
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
+import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.iptv.core.common.pip.PipController
 import com.iptv.core.network.DEFAULT_USER_AGENT
 import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.PlaybackHistoryDao
+import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.storage.dao.SourceDao
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.Kinds
@@ -63,6 +65,7 @@ class PlayerViewModel @Inject constructor(
     private val sourceDao: SourceDao,
     private val playbackHistoryDao: PlaybackHistoryDao,
     private val pipController: PipController,
+    private val prefs: AppPreferences,
 ) : ViewModel() {
 
     data class UiState(
@@ -72,6 +75,8 @@ class PlayerViewModel @Inject constructor(
         val castButtonAvailable: Boolean = false,
         val castAvailable: Boolean = false,
         val isCasting: Boolean = false,
+        /** Sesión Cast negociándose o carga en vuelo hacia el receptor. */
+        val isCastConnecting: Boolean = false,
         val castDeviceName: String? = null,
         val showReturnToMobile: Boolean = false,
         val castErrorDetail: String? = null,
@@ -89,7 +94,7 @@ class PlayerViewModel @Inject constructor(
     val player: StateFlow<Player?> = _player.asStateFlow()
 
     private var localPlayer: ExoPlayer? = null
-    private var castPlayer: CastPlayer? = null
+    private var castPlayer: RemoteCastPlayer? = null
     private var mediaSession: MediaSession? = null
     private var castContext: CastContext? = null
     private var mediaItem: MediaItem? = null
@@ -176,6 +181,13 @@ class PlayerViewModel @Inject constructor(
             }
         }
     }
+
+    // -- Permisos de Cast (notificación + descubrimiento) ---------------------
+
+    /** Se piden una sola vez por instalación; sin flag, cada arranque re-pedía. */
+    fun wasMediaPermsAsked(): Boolean = prefs.wasCastPermissionsAsked()
+
+    fun markMediaPermsAsked() = prefs.setCastPermissionsAsked()
 
     // -- Temporizador de apagado -------------------------------------------
 
@@ -289,6 +301,41 @@ class PlayerViewModel @Inject constructor(
     private val sessionAvailabilityListener = object : SessionAvailabilityListener {
         override fun onCastSessionAvailable() = startCasting()
         override fun onCastSessionUnavailable() = stopCasting()
+    }
+
+    /**
+     * Marca "conectando" desde que el usuario elige el dispositivo: entre la
+     * selección de ruta y la carga confirmada en el receptor pueden pasar
+     * varios segundos y sin este estado la app no da señal de estar emitiendo.
+     */
+    private val castSessionListener = object : SessionManagerListener<CastSession> {
+        override fun onSessionStarting(session: CastSession) = markCastConnecting(session)
+        override fun onSessionResuming(session: CastSession, sessionId: String) =
+            markCastConnecting(session)
+        override fun onSessionStarted(session: CastSession, sessionId: String) {}
+        override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {}
+        override fun onSessionEnding(session: CastSession) {}
+        override fun onSessionEnded(session: CastSession, error: Int) {
+            _uiState.update { it.copy(isCastConnecting = false) }
+        }
+        override fun onSessionSuspended(session: CastSession, reason: Int) {
+            _uiState.update { it.copy(isCastConnecting = false) }
+        }
+        override fun onSessionStartFailed(session: CastSession, error: Int) {
+            _uiState.update { it.copy(isCastConnecting = false, castDeviceName = null) }
+        }
+        override fun onSessionResumeFailed(session: CastSession, error: Int) {
+            _uiState.update { it.copy(isCastConnecting = false, castDeviceName = null) }
+        }
+    }
+
+    private fun markCastConnecting(session: CastSession) {
+        _uiState.update {
+            it.copy(
+                isCastConnecting = true,
+                castDeviceName = session.castDevice?.friendlyName ?: it.castDeviceName,
+            )
+        }
     }
 
     private val receiverErrorCallback = object : RemoteMediaClient.Callback() {
@@ -488,6 +535,9 @@ class PlayerViewModel @Inject constructor(
         castPlayer = createdPlayer
         createdPlayer.addListener(castListener)
         createdPlayer.setSessionAvailabilityListener(sessionAvailabilityListener)
+        castContext?.sessionManager?.addSessionManagerListener(
+            castSessionListener, CastSession::class.java,
+        )
         _uiState.update { it.copy(castButtonAvailable = true, castAvailable = true) }
         if (createdPlayer.isCastSessionAvailable) startCasting()
     }
@@ -499,6 +549,7 @@ class PlayerViewModel @Inject constructor(
         if (_uiState.value.isCasting || castTransferPending) return
         castTransferPlayWhenReady = local.playWhenReady
         castTransferPending = true
+        _uiState.update { it.copy(isCastConnecting = true) }
 
         observeReceiverErrors()
         publishCastExtras()
@@ -523,6 +574,7 @@ class PlayerViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     isCasting = true,
+                    isCastConnecting = false,
                     castDeviceName = castContext?.sessionManager
                         ?.currentCastSession?.castDevice?.friendlyName,
                     errorRes = null,
@@ -654,6 +706,7 @@ class PlayerViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 isCasting = true,
+                isCastConnecting = false,
                 castDeviceName = castContext?.sessionManager?.currentCastSession?.castDevice?.friendlyName,
                 errorRes = null,
                 showReturnToMobile = false,
@@ -682,6 +735,7 @@ class PlayerViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 isCasting = false,
+                isCastConnecting = false,
                 castDeviceName = null,
                 showReturnToMobile = false,
             )
@@ -806,6 +860,9 @@ class PlayerViewModel @Inject constructor(
         observedCastSession = null
         castPlayer?.setSessionAvailabilityListener(null)
         castPlayer?.removeListener(castListener)
+        castContext?.sessionManager?.removeSessionManagerListener(
+            castSessionListener, CastSession::class.java,
+        )
         // El CastPlayer es de proceso (CastPlayerRuntime): release() cerraría
         // la sesión Cast, que debe seguir viva al salir de esta pantalla.
         castPlayer = null

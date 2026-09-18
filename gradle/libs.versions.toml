@@ -1,32 +1,32 @@
 [versions]
-agp = "8.13.0"
-kotlin = "2.0.21"
-ksp = "2.0.21-1.0.27"
-hilt = "2.52"
-composeBom = "2024.12.01"
-activityCompose = "1.9.3"
-navigationCompose = "2.8.5"
-lifecycle = "2.8.7"
-coreKtx = "1.15.0"
-appcompat = "1.7.0"
+agp = "9.4.0"
+kotlin = "2.3.21"
+ksp = "2.3.12"
+hilt = "2.60.1"
+composeBom = "2026.09.00"
+activityCompose = "1.13.0"
+navigationCompose = "2.10.1"
+lifecycle = "2.11.0"
+coreKtx = "1.19.0"
+appcompat = "1.8.0"
 nanohttpd = "2.3.1"
-coil = "2.7.0"
-media3 = "1.5.1"
-castFramework = "21.5.0"
-okhttp = "4.12.0"
-ffmpegkit = "6.0.3"
-room = "2.6.1"
-paging = "3.3.2"
-workmanager = "2.9.1"
-coroutines = "1.9.0"
-serializationJson = "1.7.3"
-hiltNavigationCompose = "1.2.0"
+coil = "3.6.2"
+media3 = "1.9.4"
+castFramework = "22.3.1"
+okhttp = "5.5.0"
+ffmpegkit = "8.1.7"
+room = "2.8.5"
+paging = "3.5.1"
+workmanager = "2.11.2"
+coroutines = "1.11.0"
+serializationJson = "1.11.0"
+hiltNavigationCompose = "1.4.0"
 junit = "4.13.2"
-gmsServices = "4.4.2"
-firebaseCrashlyticsPlugin = "3.0.3"
-firebaseBom = "33.7.0"
-androidxTestExt = "1.2.1"
-androidxTestRunner = "1.6.2"
+gmsServices = "4.5.0"
+firebaseCrashlyticsPlugin = "3.0.8"
+firebaseBom = "34.19.0"
+androidxTestExt = "1.3.0"
+androidxTestRunner = "1.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -61,7 +61,10 @@ androidx-work = { group = "androidx.work", name = "work-runtime-ktx", version.re
 androidx-hilt-work = { group = "androidx.hilt", name = "hilt-work", version.ref = "hiltNavigationCompose" }
 androidx-hilt-compiler = { group = "androidx.hilt", name = "hilt-compiler", version.ref = "hiltNavigationCompose" }
 
-coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
+# Coil3 no incluye fetcher de red en el core: sin coil-network-okhttp las
+# URLs http/https no se cargan.
+coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3" }
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
@@ -69,7 +72,7 @@ media3-session = { group = "androidx.media3", name = "media3-session", version.r
 media3-cast = { group = "androidx.media3", name = "media3-cast", version.ref = "media3" }
 # Binario del decoder FFmpeg de Media3 publicado por Jellyfin (Google no lo
 # publica en Maven; el upstream es source-only). "1.5.0" = versión media3 base.
-media3-decoder-ffmpeg = { group = "org.jellyfin.media3", name = "media3-ffmpeg-decoder", version = "1.5.0+1" }
+media3-decoder-ffmpeg = { group = "org.jellyfin.media3", name = "media3-ffmpeg-decoder", version = "1.9.0+1" }
 play-services-cast-framework = { group = "com.google.android.gms", name = "play-services-cast-framework", version.ref = "castFramework" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 # https variant: remux + native AAC encoder (no GPL libs like libx264).
@@ -93,7 +96,9 @@ compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-mani
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+# AGP 9 lleva Kotlin integrado: el plugin org.jetbrains.kotlin.android ya
+# no se aplica en los módulos (la versión de KGP la fijan los plugins
+# compose/serialization de abajo, todos con version.ref = "kotlin").
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

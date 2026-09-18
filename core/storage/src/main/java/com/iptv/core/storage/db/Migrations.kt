@@ -80,3 +80,61 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         db.execSQL("ALTER TABLE `channels` ADD COLUMN `referrer` TEXT")
     }
 }
+
+/**
+ * `channels_fts` es FTS4 con contenido externo (`content=channels`): Room
+ * crea y mantiene automáticamente los triggers `room_fts_content_sync_*`
+ * tanto en `onCreate` como en `onOpen`. No crear triggers propios aquí:
+ * duplicarían cada alta/baja en el índice.
+ */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Tablas de volcado para importaciones por lotes con merge por
+        // (sourceId, externalId): conserva ids (historial/favoritos) y acota
+        // la memoria del parseo a un lote.
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `channels_staging` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `sourceId` INTEGER NOT NULL,
+                `externalId` TEXT NOT NULL,
+                `name` TEXT NOT NULL,
+                `nameNorm` TEXT NOT NULL,
+                `streamUrl` TEXT NOT NULL,
+                `logoUrl` TEXT,
+                `tvgId` TEXT,
+                `groupTitle` TEXT,
+                `kind` TEXT NOT NULL,
+                `containerExt` TEXT,
+                `sortOrder` INTEGER NOT NULL,
+                `language` TEXT NOT NULL,
+                `userAgent` TEXT,
+                `referrer` TEXT
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_channels_staging_sourceId_externalId` ON `channels_staging` (`sourceId`, `externalId`)")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `categories_staging` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `sourceId` INTEGER NOT NULL,
+                `externalId` TEXT NOT NULL,
+                `kind` TEXT NOT NULL,
+                `name` TEXT NOT NULL,
+                `sortOrder` INTEGER NOT NULL,
+                `language` TEXT NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_categories_staging_sourceId_externalId` ON `categories_staging` (`sourceId`, `externalId`)")
+
+        // Búsqueda FTS4 sobre nameNorm (la tabla ya viene poblada por
+        // 'rebuild' desde el contenido externo; los triggers la mantienen).
+        db.execSQL(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS `channels_fts` " +
+                "USING FTS4(`nameNorm` TEXT NOT NULL, content=`channels`)",
+        )
+        db.execSQL("INSERT INTO `channels_fts`(`channels_fts`) VALUES('rebuild')")
+    }
+}

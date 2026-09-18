@@ -2,7 +2,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
@@ -23,12 +22,12 @@ val signingProps = Properties().apply {
 
 android {
     namespace = "com.iptv.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "app.cerocast.iptv"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0.0"
 

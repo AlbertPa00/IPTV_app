@@ -2,13 +2,13 @@ package com.iptv.feature.player.cast
 
 import android.content.Context
 import android.util.Log
-import androidx.media3.cast.CastPlayer
+import androidx.media3.cast.RemoteCastPlayer
 import com.google.android.gms.cast.framework.CastContext
 
 /**
- * Process-scoped owner of the [CastPlayer] and its [CastContext].
+ * Process-scoped owner of the [RemoteCastPlayer] and its [CastContext].
  *
- * [CastPlayer.release] ends the whole Cast session
+ * [RemoteCastPlayer.release] ends the whole Cast session
  * (SessionManager.endCurrentSession), so the player can't live in the
  * player-screen ViewModel: leaving the screen would kill TV playback.
  * Holding it here lets the user keep browsing while casting — the session
@@ -20,7 +20,7 @@ import com.google.android.gms.cast.framework.CastContext
 object CastPlayerRuntime {
 
     private var castContext: CastContext? = null
-    private var castPlayer: CastPlayer? = null
+    private var castPlayer: RemoteCastPlayer? = null
     private var initFailed = false
 
     /**
@@ -44,16 +44,23 @@ object CastPlayerRuntime {
     fun castContext(): CastContext? = castContext
 
     /**
-     * Shared CastPlayer, created on first use. Never released: release()
-     * would end the active Cast session. Must be called on the main thread.
+     * Shared RemoteCastPlayer, created on first use. Never released:
+     * release() would end the active Cast session. Must be called on the
+     * main thread.
      */
     @Synchronized
-    fun castPlayer(context: Context): CastPlayer? {
+    fun castPlayer(context: Context): RemoteCastPlayer? {
         castPlayer?.let { return it }
         if (initFailed) return null
         return try {
+            // Media3 1.9 split the old remote-only CastPlayer into a dual
+            // CastPlayer (local+remote delegation) and RemoteCastPlayer.
+            // The app manages its own ExoPlayer, so the remote-only one is
+            // the right fit — same semantics as the deprecated constructor.
             val ctx = CastContext.getSharedInstance(context.applicationContext)
-            val created = CastPlayer(ctx, LiveAwareMediaItemConverter())
+            val created = RemoteCastPlayer.Builder(context.applicationContext)
+                .setMediaItemConverter(LiveAwareMediaItemConverter())
+                .build()
             castContext = ctx
             castPlayer = created
             created

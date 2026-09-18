@@ -234,8 +234,14 @@ class VodCatalogViewModel @Inject constructor(
                 Pager(PagingConfig(pageSize = 60, initialLoadSize = 120)) {
                     val kind = kind.storageValue
                     when {
-                        state.query.isNotBlank() ->
-                            channelDao.pagingBySearch(source.id, kind, state.query.toLikePattern())
+                        state.query.isNotBlank() -> {
+                            val match = state.query.toFtsMatch()
+                            if (match.isBlank()) {
+                                channelDao.pagingBySearch(source.id, kind, state.query.toLikePattern())
+                            } else {
+                                channelDao.pagingByFts(source.id, kind, match)
+                            }
+                        }
                         else -> when (val grid = state.grid) {
                             is Grid.Category -> channelDao.pagingByCategory(source.id, grid.id)
                             is Grid.Favorites -> channelDao.pagingFavorites(source.id, kind)
@@ -251,10 +257,9 @@ class VodCatalogViewModel @Inject constructor(
                             else -> channelDao.pagingBySource(source.id, kind)
                         }
                     }
-                }.flow
+                }.flow.cachedIn(viewModelScope)
             }
         }
-        .cachedIn(viewModelScope)
 
     fun onQueryChange(query: String) {
         _uiState.update { UiState(query = query.trimStart(), language = it.language) }

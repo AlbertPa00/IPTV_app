@@ -22,6 +22,16 @@ val Neutral95 = Color(0xFFF1F0F7)
 val ErrorDark = Color(0xFFFFB4AB)
 val ErrorLight = Color(0xFFBA1A1A)
 
+// Identidad "cine" del tema oscuro: fondo casi negro, superficies grafito y
+// acento carmín. Es la paleta única de la app (catálogo, reproductor, EPG).
+// El carmín se apaga un punto respecto al rojo Netflix puro (#E50914): sobre
+// negro OLED el rojo saturado vibraba; #DC2626 sigue leyéndose rojo.
+val Carmine = Color(0xFFDC2626)
+val CinemaBlack = Color(0xFF08090B)
+val Graphite = Color(0xFF15171B)
+val GraphiteLight = Color(0xFF22252B)
+val MutedText = Color(0xFFB6B8BE)
+
 val LightColorScheme = androidx.compose.material3.lightColorScheme(
     primary = Blue40,
     onPrimary = Color.White,
@@ -41,19 +51,25 @@ val LightColorScheme = androidx.compose.material3.lightColorScheme(
 )
 
 val DarkColorScheme = androidx.compose.material3.darkColorScheme(
-    primary = Blue80,
-    onPrimary = Blue10,
-    primaryContainer = Blue20,
-    onPrimaryContainer = Blue90,
-    secondary = Teal80,
-    onSecondary = Color(0xFF003739),
-    secondaryContainer = Teal30,
-    onSecondaryContainer = Teal90,
-    background = Neutral10,
-    onBackground = Neutral90,
-    surface = Neutral20,
-    onSurface = Neutral90,
-    surfaceVariant = Neutral20,
-    onSurfaceVariant = Neutral90,
+    primary = Carmine,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF5A0A10),
+    onPrimaryContainer = Color.White,
+    secondary = MutedText,
+    onSecondary = CinemaBlack,
+    secondaryContainer = GraphiteLight,
+    onSecondaryContainer = Color.White,
+    tertiary = Carmine,
+    tertiaryContainer = Color(0xFF3D1115),
+    onTertiaryContainer = Color.White,
+    background = CinemaBlack,
+    onBackground = Color.White,
+    surface = CinemaBlack,
+    onSurface = Color.White,
+    surfaceVariant = Graphite,
+    onSurfaceVariant = MutedText,
+    surfaceContainer = Graphite,
+    surfaceContainerHigh = GraphiteLight,
+    outline = Color(0xFF6E7278),
     error = ErrorDark,
 )

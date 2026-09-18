@@ -4,7 +4,15 @@
     <string name="welcome_title">Tu IPTV, sencillo</string>
     <string name="welcome_body">Añade la lista de tu proveedor o entra con tu usuario y contraseña y empieza a zapear en segundos.</string>
     <string name="welcome_legal">Esta aplicación no incluye listas ni canales: usa los que ya tienes de tu proveedor.</string>
-    <string name="welcome_start">Empezar</string>
+    <string name="onboarding_skip">Saltar</string>
+    <string name="onboarding_next">Siguiente</string>
+    <string name="onboarding_try_title">Pruébalo en un toque</string>
+    <string name="onboarding_try_body">Carga una lista pública de canales gratuitos y empieza a zapear ahora mismo. Podrás borrarla cuando quieras desde Ajustes.</string>
+    <string name="onboarding_own_source">Tengo mi lista o cuenta</string>
+    <string name="onboarding_done_title">¡Listo!</string>
+    <string name="onboarding_done_body">Ya tienes canales para probar. Toca cualquiera para verlo: marca favoritos con la estrella y cambia de canal con los botones de zapping.</string>
+    <string name="onboarding_watch">Ver canales</string>
+    <string name="settings_tutorial">Ver tutorial de nuevo</string>
 
     <!-- Alta de fuente -->
     <string name="source_add_title">Añadir fuente</string>

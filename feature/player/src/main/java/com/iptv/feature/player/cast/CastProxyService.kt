@@ -167,12 +167,17 @@ class CastProxyService : Service() {
         )
 
         // Attach the MediaSession token when available — gives the
-        // notification proper media styling on the lock screen.
+        // notification proper media styling on the lock screen. Media3 1.9
+        // removed sessionCompatToken; the compat MediaStyle still needs a
+        // MediaSessionCompat.Token, so we wrap the platform token.
         runCatching {
-            CastProxyRuntime.mediaSession?.sessionCompatToken?.let { token ->
+            CastProxyRuntime.mediaSession?.platformToken?.let { token ->
                 builder.setStyle(
                     androidx.media.app.NotificationCompat.MediaStyle()
-                        .setMediaSession(token)
+                        .setMediaSession(
+                            android.support.v4.media.session.MediaSessionCompat.Token
+                                .fromToken(token),
+                        )
                         .setShowActionsInCompactView(0, 1, 2),
                 )
             }

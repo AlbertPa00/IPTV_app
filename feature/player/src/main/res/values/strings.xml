@@ -19,6 +19,7 @@
     <string name="player_cast">Enviar a Chromecast</string>
     <string name="player_cast_device">Chromecast</string>
     <string name="player_casting_to">Reproduciendo en %1$s</string>
+    <string name="player_cast_connecting">Enviando a %1$s…</string>
     <string name="player_return_to_mobile">Volver a móvil</string>
     <string name="player_error_network">No hay conexión o el servidor no responde</string>
     <string name="player_error_http">El canal no está disponible ahora (servidor ocupado o enlace caído)</string>

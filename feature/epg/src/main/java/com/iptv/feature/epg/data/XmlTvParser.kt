@@ -6,7 +6,6 @@ import org.xmlpull.v1.XmlPullParserFactory
 import java.io.InputStream
 import java.time.LocalDateTime
 import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 
 internal data class XmlTvProgramme(
     val channelKey: String,
@@ -73,18 +72,39 @@ internal class XmlTvParser {
 }
 
 internal object XmlTvDateParser {
-    private val compact = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
-
-    fun parseUtcMillis(raw: String): Long? = runCatching {
+    /**
+     * "yyyyMMddHHmmss ±HHMM" parseado a mano: DateTimeFormatter + un Regex
+     * instanciado por llamada eran el mayor coste de CPU de la importación
+     * XMLTV (cientos de miles de programas por documento).
+     */
+    fun parseUtcMillis(raw: String): Long? {
         val value = raw.trim()
-        require(value.length >= 14)
-        val local = LocalDateTime.parse(value.substring(0, 14), compact)
+        if (value.length < 14) return null
+        fun d2(i: Int): Int {
+            val a = value[i] - '0'
+            val b = value[i + 1] - '0'
+            if (a !in 0..9 || b !in 0..9) return -1
+            return a * 10 + b
+        }
+        val fields = IntArray(7) { d2(it * 2) }
+        if (fields.any { it < 0 }) return null
         val suffix = value.substring(14).trim()
         val offset = when {
             suffix.isEmpty() || suffix == "Z" -> ZoneOffset.UTC
-            suffix.matches(Regex("[+-]\\d{4}")) -> ZoneOffset.of(suffix.substring(0, 3) + ":" + suffix.substring(3))
-            else -> ZoneOffset.of(suffix)
+            suffix.length == 5 && (suffix[0] == '+' || suffix[0] == '-') &&
+                suffix[1].isDigit() && suffix[2].isDigit() && suffix[3].isDigit() && suffix[4].isDigit() -> {
+                val minutes = (suffix[1] - '0') * 600 + (suffix[2] - '0') * 60 +
+                    (suffix[3] - '0') * 10 + (suffix[4] - '0')
+                ZoneOffset.ofTotalSeconds(if (suffix[0] == '-') -minutes * 60 else minutes * 60)
+            }
+            else -> runCatching { ZoneOffset.of(suffix) }.getOrNull() ?: return null
         }
-        local.toInstant(offset).toEpochMilli()
-    }.getOrNull()
+        val local = runCatching {
+            LocalDateTime.of(
+                fields[0] * 100 + fields[1], fields[2], fields[3],
+                fields[4], fields[5], fields[6],
+            )
+        }.getOrNull() ?: return null
+        return local.toInstant(offset).toEpochMilli()
+    }
 }

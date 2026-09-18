@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
@@ -50,7 +51,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iptv.core.storage.entity.CategoryEntity
 import com.iptv.core.storage.entity.SourceTypes
@@ -66,6 +67,7 @@ import java.util.Date
 fun SettingsScreen(
     appVersion: String,
     onAddSource: () -> Unit,
+    onShowTutorial: () -> Unit,
     sourcesViewModel: SourcesViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -244,6 +246,12 @@ fun SettingsScreen(
                 onClick = { showPrivacy = true },
             )
         }
+        item {
+            AboutRow(
+                label = stringResource(R.string.settings_tutorial),
+                onClick = onShowTutorial,
+            )
+        }
     }
 
     // -- Diálogos ---------------------------------------------------------
@@ -342,6 +350,13 @@ private fun AboutRow(label: String, value: String? = null, onClick: (() -> Unit)
                 value,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (onClick != null) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

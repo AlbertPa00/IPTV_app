@@ -1,5 +1,6 @@
 package com.iptv.feature.catalog.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,13 +46,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
-import coil.compose.AsyncImage
 import com.iptv.core.designsystem.components.EmptyState
+import com.iptv.core.designsystem.components.IptvAsyncImage
 import com.iptv.core.designsystem.components.LoadingState
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.feature.catalog.R
@@ -73,6 +74,10 @@ fun VodCatalogScreen(
     val content = viewModel.paging.collectAsLazyPagingItems()
     val kind = viewModel.kind
     var showLanguagePicker by remember { mutableStateOf(false) }
+
+    // "Ver todo" es un modo interno de la pantalla: Atrás vuelve a los
+    // carruseles en lugar de salir de la sección.
+    BackHandler(enabled = state.grid != null) { viewModel.closeGrid() }
 
     Column(Modifier.fillMaxSize().background(CinemaBlack)) {
         CatalogHeader(
@@ -176,7 +181,7 @@ private fun FeaturedHero(
             .background(GraphiteLight)
             .clickable { onClick(item.id) },
     ) {
-        AsyncImage(
+        IptvAsyncImage(
             model = item.logoUrl,
             contentDescription = item.name,
             contentScale = ContentScale.Crop,

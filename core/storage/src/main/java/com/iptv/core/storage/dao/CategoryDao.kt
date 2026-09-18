@@ -2,8 +2,10 @@ package com.iptv.core.storage.dao
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.iptv.core.storage.entity.CategoryEntity
+import com.iptv.core.storage.entity.CategoryStagingEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -59,4 +61,52 @@ interface CategoryDao {
 
     @Query("UPDATE categories SET language = :language WHERE id = :id")
     suspend fun setLanguage(id: Long, language: String)
+
+    // -- Staging de importación ----------------------------------------------
+    // REPLACE conserva id, isLocked, hidden y el sortOrder previo (el orden
+    // personalizado del usuario manda sobre el del proveedor, igual que antes).
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertStaging(rows: List<CategoryStagingEntity>)
+
+    @Query("DELETE FROM categories_staging WHERE sourceId = :sourceId")
+    suspend fun clearStaging(sourceId: Long)
+
+    @Query(
+        """
+        INSERT OR REPLACE INTO categories
+            (id, sourceId, externalId, kind, name, sortOrder, isLocked, hidden, language)
+        SELECT x.id, s.sourceId, s.externalId, s.kind, s.name, x.sortOrder,
+               x.isLocked, x.hidden, s.language
+        FROM categories_staging s
+        JOIN categories x ON x.sourceId = s.sourceId AND x.externalId = s.externalId
+        WHERE s.sourceId = :sourceId AND (
+            x.kind IS NOT s.kind OR x.name IS NOT s.name OR x.language IS NOT s.language)
+        """,
+    )
+    suspend fun mergeStagedUpdates(sourceId: Long)
+
+    @Query(
+        """
+        INSERT INTO categories (sourceId, externalId, kind, name, sortOrder, isLocked, hidden, language)
+        SELECT s.sourceId, s.externalId, s.kind, s.name, s.sortOrder, 0, 0, s.language
+        FROM categories_staging s
+        WHERE s.sourceId = :sourceId AND NOT EXISTS (
+            SELECT 1 FROM categories x
+            WHERE x.sourceId = s.sourceId AND x.externalId = s.externalId)
+        """,
+    )
+    suspend fun insertStagedNew(sourceId: Long)
+
+    @Query(
+        "DELETE FROM categories WHERE sourceId = :sourceId " +
+            "AND externalId NOT IN (SELECT externalId FROM categories_staging WHERE sourceId = :sourceId)",
+    )
+    suspend fun deleteAbsent(sourceId: Long)
+
+    @Query(
+        "DELETE FROM categories WHERE sourceId = :sourceId AND kind NOT IN (:keptKinds) " +
+            "AND externalId NOT IN (SELECT externalId FROM categories_staging WHERE sourceId = :sourceId)",
+    )
+    suspend fun deleteAbsentExcept(sourceId: Long, keptKinds: Collection<String>)
 }

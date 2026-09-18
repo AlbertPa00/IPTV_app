@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,8 +29,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -39,11 +42,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
@@ -73,6 +78,7 @@ fun LiveTvScreen(
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val languages by viewModel.languages.collectAsStateWithLifecycle()
     val guideByChannel by viewModel.guideByChannel.collectAsStateWithLifecycle()
+    val showQuickHint by viewModel.showQuickHint.collectAsStateWithLifecycle()
     val content = viewModel.channels.collectAsLazyPagingItems()
     var showLanguagePicker by remember { mutableStateOf(false) }
     val now by produceState(System.currentTimeMillis()) {
@@ -119,6 +125,19 @@ fun LiveTvScreen(
                     LoadingState()
                 content.itemCount == 0 -> EmptyState(liveEmptyMessage(filters))
                 else -> ChannelList(content, guideByChannel, now, onChannelClick, viewModel::toggleFavorite)
+            }
+            if (showQuickHint && content.itemCount > 0) {
+                QuickHintBanner(
+                    text = stringResource(R.string.catalog_quick_hint),
+                    onClose = viewModel::markQuickHintSeen,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp),
+                )
+                LaunchedEffect(Unit) {
+                    delay(8_000)
+                    viewModel.markQuickHintSeen()
+                }
             }
         }
     }
@@ -201,6 +220,7 @@ private fun ChannelList(
                 )
             }
         }
+        item { PagingAppendState(content.loadState.append) { content.retry() } }
     }
 }
 
@@ -212,6 +232,7 @@ private fun LiveChannelRow(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
     Card(
         colors = CardDefaults.cardColors(containerColor = Graphite),
         shape = RoundedCornerShape(12.dp),
@@ -238,10 +259,22 @@ private fun LiveChannelRow(
                 }
                 NowNext(guide, channel.groupTitle, now)
             }
-            IconButton(onClick = onToggleFavorite, modifier = Modifier.size(48.dp)) {
+            IconButton(
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onToggleFavorite()
+                },
+                modifier = Modifier.size(48.dp),
+            ) {
                 Icon(
                     Icons.Filled.Star,
-                    contentDescription = stringResource(R.string.catalog_cd_favorite),
+                    contentDescription = stringResource(
+                        if (channel.isFavorite) {
+                            R.string.catalog_favorite_remove
+                        } else {
+                            R.string.catalog_favorite_add
+                        },
+                    ),
                     tint = if (channel.isFavorite) Carmine else MutedText,
                 )
             }
@@ -319,3 +352,40 @@ private fun liveEmptyMessage(filters: LiveTvViewModel.Filters): String = stringR
 
 private fun formatTime(timestamp: Long): String =
     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(timestamp))
+
+/**
+ * Pista de primer uso: banner inferior auto-ocultable (también por la X y por
+ * el temporizador del llamante). Se muestra una única vez por instalación.
+ */
+@Composable
+private fun QuickHintBanner(
+    text: String,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.inverseSurface,
+        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+        shape = RoundedCornerShape(12.dp),
+        shadowElevation = 6.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onClose) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.catalog_close),
+                    tint = MaterialTheme.colorScheme.inverseOnSurface,
+                )
+            }
+        }
+    }
+}

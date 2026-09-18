@@ -8,7 +8,10 @@ import com.iptv.core.storage.dao.PlaybackHistoryDao
 import com.iptv.core.storage.dao.ProgrammeDao
 import com.iptv.core.storage.dao.SourceDao
 import com.iptv.core.storage.entity.CategoryEntity
+import com.iptv.core.storage.entity.CategoryStagingEntity
 import com.iptv.core.storage.entity.ChannelEntity
+import com.iptv.core.storage.entity.ChannelFtsEntity
+import com.iptv.core.storage.entity.ChannelStagingEntity
 import com.iptv.core.storage.entity.PlaybackHistoryEntity
 import com.iptv.core.storage.entity.ProgrammeEntity
 import com.iptv.core.storage.entity.SourceEntity
@@ -20,8 +23,11 @@ import com.iptv.core.storage.entity.SourceEntity
         ChannelEntity::class,
         ProgrammeEntity::class,
         PlaybackHistoryEntity::class,
+        ChannelStagingEntity::class,
+        CategoryStagingEntity::class,
+        ChannelFtsEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

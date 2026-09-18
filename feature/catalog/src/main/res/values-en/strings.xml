@@ -24,6 +24,8 @@
     <string name="catalog_empty_search">No results for your search</string>
     <string name="catalog_empty_favorites">No favorites yet. Star channels and titles to pin them here.</string>
     <string name="catalog_cd_favorite">Toggle favorite</string>
+    <string name="catalog_clear_search">Clear search</string>
+    <string name="catalog_paging_error">Couldn\'t load more results.</string>
     <string name="catalog_favorite_add">Add to favorites</string>
     <string name="catalog_favorite_remove">Remove from favorites</string>
 
@@ -72,4 +74,5 @@
     <string name="lang_mv">Music</string>
     <string name="lang_mc">Music</string>
     <string name="lang_rx">Relax</string>
+    <string name="catalog_quick_hint">Tap a channel to watch it. The ★ saves it to favorites.</string>
 </resources>

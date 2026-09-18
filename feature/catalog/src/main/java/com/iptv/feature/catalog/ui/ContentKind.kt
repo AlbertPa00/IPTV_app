@@ -15,3 +15,14 @@ internal fun String.toLikePattern(): String = TextNormalizer.searchKey(this)
     .replace("\\", "\\\\")
     .replace("%", "\\%")
     .replace("_", "\\_")
+
+/**
+ * Convierte la búsqueda del usuario a una consulta FTS MATCH: cada palabra
+ * normalizada se reduce a caracteres alfanuméricos y lleva prefijo `*`
+ * (`hbo* max*`), que es AND implícito con coincidencia de prefijo.
+ * Vacío si no quedan tokens útiles (la consulta recae al LIKE).
+ */
+internal fun String.toFtsMatch(): String = TextNormalizer.searchKey(this)
+    .split(Regex("[^\\p{L}\\p{N}]+"))
+    .filter { it.isNotBlank() }
+    .joinToString(" ") { "$it*" }

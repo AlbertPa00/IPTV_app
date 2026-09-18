@@ -19,7 +19,10 @@ Un feature no debe depender de otro feature. Los slices nuevos se integran desde
 
 - JDK 17+ (el `java` por defecto del sistema es JRE 8 y rompe el build;
   usar `JAVA_HOME=C:\Users\alpal\.jdks\openjdk-19.0.2`).
-- Android SDK API 36 y Build Tools 35.0.0 (AGP 8.13, Gradle Wrapper 8.13).
+- Android SDK API 37 y Build Tools 36.0.0 (AGP 9.4, Gradle Wrapper 9.7.1).
+- AGP 9 lleva Kotlin integrado: NO se aplica el plugin
+  `org.jetbrains.kotlin.android` en los módulos. La versión de Kotlin la
+  fija el catálogo (plugins compose/serialization, hoy 2.3.21 + KSP 2.3.12).
 - SDK local de Windows: `C:\Users\alpal\AppData\Local\Android\Sdk`.
 - `ANDROID_HOME` y `ANDROID_SDK_ROOT` están configurados como variables del usuario.
 

@@ -19,6 +19,7 @@
     <string name="player_cast">Cast to Chromecast</string>
     <string name="player_cast_device">Chromecast</string>
     <string name="player_casting_to">Playing on %1$s</string>
+    <string name="player_cast_connecting">Sending to %1$s…</string>
     <string name="player_return_to_mobile">Return to mobile</string>
     <string name="player_error_network">No connection or the server is not responding</string>
     <string name="player_error_http">The channel is unavailable right now (busy server or dead link)</string>

@@ -110,12 +110,38 @@ class MigrationTest {
     }
 
     @Test
-    fun migrateAll_1to8() {
+    fun migrate8To9_createsStagingAndFts() {
+        helper.createDatabase(DB_NAME, 8).apply {
+            execSQL(
+                "INSERT INTO sources (id, type, name, isActive) VALUES (1, 'M3U_URL', 'S1', 1)",
+            )
+            execSQL(
+                "INSERT INTO channels (sourceId, externalId, name, nameNorm, streamUrl, kind, sortOrder, isFavorite, language) " +
+                    "VALUES (1, 'u1', 'La 1', 'la 1', 'http://x', 'LIVE', 0, 1, '')",
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(DB_NAME, 9, true, MIGRATION_8_9)
+
+        // La FTS se rellena desde el contenido existente y conserva las filas.
+        db.query("SELECT nameNorm FROM channels_fts WHERE channels_fts MATCH 'la*'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("la 1", c.getString(0))
+        }
+        db.query("SELECT isFavorite FROM channels").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals(1, c.getInt(0))
+        }
+    }
+
+    @Test
+    fun migrateAll_1to9() {
         helper.createDatabase(DB_NAME, 1).close()
         helper.runMigrationsAndValidate(
-            DB_NAME, 8, true,
+            DB_NAME, 9, true,
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
+            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
         )
     }
 

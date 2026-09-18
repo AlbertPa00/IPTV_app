@@ -43,10 +43,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
 import com.iptv.core.designsystem.components.EmptyState
+import com.iptv.core.designsystem.components.IptvAsyncImage
 import com.iptv.core.designsystem.components.LoadingState
 import com.iptv.feature.catalog.R
 
@@ -90,7 +90,7 @@ private fun DetailsContent(
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
             val backdrop = info?.backdropUrl ?: channel.logoUrl
             if (backdrop != null) {
-                AsyncImage(
+                IptvAsyncImage(
                     model = backdrop,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
@@ -220,7 +220,7 @@ private fun ActionRow(
                 Icon(
                     imageVector = Icons.Filled.Star,
                     contentDescription = null,
-                    tint = if (channel.isFavorite) StarGold else MutedText,
+                    tint = if (channel.isFavorite) Carmine else MutedText,
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(6.dp))

@@ -15,7 +15,9 @@ import com.iptv.core.storage.dao.ProgrammeDao
 import com.iptv.core.storage.dao.SourceDao
 import com.iptv.core.storage.db.AppDatabase
 import com.iptv.core.storage.entity.CategoryEntity
+import com.iptv.core.storage.entity.CategoryStagingEntity
 import com.iptv.core.storage.entity.ChannelEntity
+import com.iptv.core.storage.entity.ChannelStagingEntity
 import com.iptv.core.storage.entity.Kinds
 import android.util.Log
 import com.iptv.core.storage.entity.SourceEntity
@@ -117,14 +119,14 @@ class SourceRepository @Inject constructor(
                 emit(SourceSyncPhase.Done(sourceId))
             }
         } catch (e: EmptyPlaylistException) {
-            createdSourceId?.let { sourceDao.deleteById(it) }
+            cleanupFailedImport(createdSourceId)
             emit(SourceSyncPhase.Failed(SourceError.EmptyPlaylist))
         } catch (e: IOException) {
-            createdSourceId?.let { sourceDao.deleteById(it) }
+            cleanupFailedImport(createdSourceId)
             emit(SourceSyncPhase.Failed(SourceError.Network))
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            createdSourceId?.let { sourceDao.deleteById(it) }
+            cleanupFailedImport(createdSourceId)
             emit(SourceSyncPhase.Failed(SourceError.Unknown))
         }
     }.flowOn(dispatchers.io)
@@ -268,6 +270,8 @@ class SourceRepository @Inject constructor(
         database.withTransaction {
             channelDao.deleteBySource(id)
             categoryDao.deleteBySource(id)
+            channelDao.clearStaging(id)
+            categoryDao.clearStaging(id)
             programmeDao.deleteBySource(id)
             playbackHistoryDao.deleteBySource(id)
             sourceDao.deleteById(id)
@@ -329,18 +333,42 @@ class SourceRepository @Inject constructor(
         // Cada canal hereda el idioma de su categoría (prefijo "ES -", "AR|"…);
         // sin categoría se intenta detectar por el propio nombre.
         val langByGroup = categories.associate { it.externalId to it.language }
-        val channels = buildList {
-            addAll(catalog.liveStreams.map { it.toLiveEntity(sourceId, server, username, password).withLanguage(langByGroup) })
-            addAll(catalog.vodStreams.orEmpty().map { it.toVodEntity(sourceId, server, username, password).withLanguage(langByGroup) })
-            addAll(catalog.series.orEmpty().map { it.toSeriesEntity(sourceId).withLanguage(langByGroup) })
-        }
+        // Las entidades se vuelcan a staging por lotes: no se materializa la
+        // lista completa de canales en memoria durante la importación.
+        channelDao.clearStaging(sourceId)
+        stageChannels(
+            sequence {
+                catalog.liveStreams.forEach {
+                    yield(it.toLiveEntity(sourceId, server, username, password).withLanguage(langByGroup))
+                }
+                catalog.vodStreams.orEmpty().forEach {
+                    yield(it.toVodEntity(sourceId, server, username, password).withLanguage(langByGroup))
+                }
+                catalog.series.orEmpty().forEach {
+                    yield(it.toSeriesEntity(sourceId).withLanguage(langByGroup))
+                }
+            },
+        )
         // Las secciones que el servidor no devolvió conservan sus filas
         // anteriores: un fallo transitorio no debe borrar contenido ya importado.
         val keptKinds = missing.map { if (it == SECTION_VOD) Kinds.VOD else Kinds.SERIES }.toSet()
-        replaceCatalog(sourceId, categories, channels, userAgent = null, keepKinds = keptKinds)
+        replaceCatalog(sourceId, categories, userAgent = null, keepKinds = keptKinds)
         ensureActiveSource(sourceId)
         emit(SourceSyncPhase.Done(sourceId, missing))
     }.flowOn(dispatchers.io)
+
+    /** Inserta entidades en `channels_staging` por lotes de [BATCH_SIZE]. */
+    private suspend fun stageChannels(channels: Sequence<ChannelEntity>) {
+        val batch = ArrayList<ChannelStagingEntity>(BATCH_SIZE)
+        for (entity in channels) {
+            batch += entity.toStaging()
+            if (batch.size == BATCH_SIZE) {
+                channelDao.insertStaging(batch)
+                batch.clear()
+            }
+        }
+        if (batch.isNotEmpty()) channelDao.insertStaging(batch)
+    }
 
     private data class XtreamCatalog(
         val liveCategories: List<XtCategory>,
@@ -455,9 +483,12 @@ class SourceRepository @Inject constructor(
         onProgress: suspend (Int) -> Unit,
     ) {
         val categories = linkedMapOf<String, CategoryEntity>()
-        val channels = mutableListOf<ChannelEntity>()
         var userAgent: String? = null
         var epgUrl: String? = null
+        var count = 0
+        // Descarta restos de una importación anterior interrumpida.
+        channelDao.clearStaging(sourceId)
+        val batch = ArrayList<ChannelStagingEntity>(BATCH_SIZE)
         val iterator = M3uParser().parse(reader) { epgUrl = it }.iterator()
 
         while (iterator.hasNext()) {
@@ -470,13 +501,21 @@ class SourceRepository @Inject constructor(
             val language = parsed.countryCode()
                 ?: groupKey?.let { categories[it]?.language }?.takeIf { it.isNotBlank() }
                 ?: LanguageTag.detect(parsed.name)
-            channels += parsed.toEntity(sourceId, kind).copy(language = language)
-            if (channels.size % BATCH_SIZE == 0) onProgress(channels.size)
+            batch += parsed.toStagingEntity(sourceId, kind).copy(language = language)
+            count++
+            if (batch.size == BATCH_SIZE) {
+                channelDao.insertStaging(batch)
+                batch.clear()
+                onProgress(count)
+            }
         }
 
-        if (channels.isEmpty()) throw EmptyPlaylistException()
-        if (channels.size % BATCH_SIZE != 0) onProgress(channels.size)
-        replaceCatalog(sourceId, categories.values.toList(), channels, userAgent, epgUrl)
+        if (count == 0) throw EmptyPlaylistException()
+        if (batch.isNotEmpty()) {
+            channelDao.insertStaging(batch)
+            onProgress(count)
+        }
+        replaceCatalog(sourceId, categories.values.toList(), userAgent, epgUrl)
         ensureActiveSource(sourceId)
     }
 
@@ -505,7 +544,7 @@ class SourceRepository @Inject constructor(
         tvgCountry?.substringBefore(';')?.substringBefore(',')?.trim()?.uppercase()
             ?.takeIf { it.length in 2..3 && it.all(Char::isLetter) }
 
-    private fun ParsedChannel.toEntity(sourceId: Long, kind: String) = ChannelEntity(
+    private fun ParsedChannel.toStagingEntity(sourceId: Long, kind: String) = ChannelStagingEntity(
         sourceId = sourceId,
         externalId = url,
         name = name,
@@ -519,6 +558,32 @@ class SourceRepository @Inject constructor(
         sortOrder = sortOrder,
         userAgent = userAgent?.takeIf { it.isNotBlank() },
         referrer = referrer?.takeIf { it.isNotBlank() },
+    )
+
+    private fun ChannelEntity.toStaging() = ChannelStagingEntity(
+        sourceId = sourceId,
+        externalId = externalId,
+        name = name,
+        nameNorm = nameNorm,
+        streamUrl = streamUrl,
+        logoUrl = logoUrl,
+        tvgId = tvgId,
+        groupTitle = groupTitle,
+        kind = kind,
+        containerExt = containerExt,
+        sortOrder = sortOrder,
+        language = language,
+        userAgent = userAgent,
+        referrer = referrer,
+    )
+
+    private fun CategoryEntity.toStaging() = CategoryStagingEntity(
+        sourceId = sourceId,
+        externalId = externalId,
+        kind = kind,
+        name = name,
+        sortOrder = sortOrder,
+        language = language,
     )
 
     private fun copyPlaylistToInternalStorage(uri: Uri): StoredPlaylist {
@@ -555,8 +620,18 @@ class SourceRepository @Inject constructor(
     }
 
     private suspend fun cleanupFailedFileImport(sourceId: Long?, file: File?) {
-        if (sourceId != null) sourceDao.deleteById(sourceId)
+        cleanupFailedImport(sourceId)
         file?.let(::deleteStoredPlaylist)
+    }
+
+    // Las filas de staging no mueren con la fuente: sin este borrado cada alta
+    // fallida deja un volcado huérfano por cada intento.
+    private suspend fun cleanupFailedImport(sourceId: Long?) {
+        if (sourceId != null) {
+            channelDao.clearStaging(sourceId)
+            categoryDao.clearStaging(sourceId)
+            sourceDao.deleteById(sourceId)
+        }
     }
 
     private fun deleteStoredPlaylist(file: File) {
@@ -584,51 +659,39 @@ class SourceRepository @Inject constructor(
         }
 
     /**
-     * Reemplaza el catálogo de una fuente en una transacción, conservando los
-     * favoritos (identificados por externalId: URL en M3U, stream_id en Xtream).
+     * Funde el catálogo volcado en las tablas de staging en una transacción.
+     * El merge por (sourceId, externalId) conserva los ids de canales y
+     * categorías —favoritos, historial de reproducción y bloqueos sobreviven
+     * a la resincronización— y sólo reescribe las filas que cambiaron.
      */
     private suspend fun replaceCatalog(
         sourceId: Long,
         categories: List<CategoryEntity>,
-        channels: List<ChannelEntity>,
         userAgent: String?,
         epgUrl: String? = null,
         keepKinds: Set<String> = emptySet(),
     ) {
         database.withTransaction {
-            val favorites = channelDao.favoriteExternalIds(sourceId).toHashSet()
-            val lockedCategories = categoryDao.lockedExternalIds(sourceId).toHashSet()
-            val previousCategories = categoryDao.allBySource(sourceId)
-                .associateBy { it.externalId }
+            categoryDao.clearStaging(sourceId)
+            categoryDao.insertStaging(categories.map { it.toStaging() })
+            categoryDao.mergeStagedUpdates(sourceId)
+            categoryDao.insertStagedNew(sourceId)
             if (keepKinds.isEmpty()) {
-                channelDao.deleteBySource(sourceId)
-                categoryDao.deleteBySource(sourceId)
+                categoryDao.deleteAbsent(sourceId)
             } else {
-                channelDao.deleteBySourceExceptKinds(sourceId, keepKinds)
-                categoryDao.deleteBySourceExceptKinds(sourceId, keepKinds)
+                categoryDao.deleteAbsentExcept(sourceId, keepKinds)
             }
-            val insertedCategoryIds = categoryDao.insertAll(
-                categories.map { category ->
-                    val previous = previousCategories[category.externalId]
-                    category.copy(
-                        isLocked = category.externalId in lockedCategories,
-                        hidden = previous?.hidden ?: false,
-                        // Conserva el orden personalizado si el usuario lo cambió.
-                        sortOrder = previous?.sortOrder ?: category.sortOrder,
-                    )
-                },
-            )
-            val externalToRowId = categories.map { it.externalId }.zip(insertedCategoryIds).toMap()
-            channels.chunked(BATCH_SIZE).forEach { batch ->
-                channelDao.insertAll(
-                    batch.map { channel ->
-                        channel.copy(
-                            categoryId = channel.groupTitle?.let { externalToRowId[it] },
-                            isFavorite = channel.externalId in favorites,
-                        )
-                    }
-                )
+            // Las categorías ya son definitivas: el LEFT JOIN del merge de
+            // canales resuelve categoryId contra las filas recién fundidas.
+            channelDao.mergeStagedUpdates(sourceId)
+            channelDao.insertStagedNew(sourceId)
+            if (keepKinds.isEmpty()) {
+                channelDao.deleteAbsent(sourceId)
+            } else {
+                channelDao.deleteAbsentExcept(sourceId, keepKinds)
             }
+            channelDao.clearStaging(sourceId)
+            categoryDao.clearStaging(sourceId)
             if (userAgent != null || epgUrl != null) {
                 sourceDao.findById(sourceId)?.let {
                     sourceDao.update(

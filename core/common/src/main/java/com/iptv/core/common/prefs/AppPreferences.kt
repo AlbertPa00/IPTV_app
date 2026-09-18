@@ -72,6 +72,44 @@ class AppPreferences @Inject constructor(
         prefs.edit().remove(KEY_PIN_SALT).remove(KEY_PIN_HASH).apply()
     }
 
+    // -- Guía EPG (filtro y orden) --------------------------------------------
+
+    val guideFavoritesOnly: Flow<Boolean> = booleanFlow(KEY_GUIDE_FAVORITES, default = false)
+    val guideSort: Flow<String?> = stringFlow(KEY_GUIDE_SORT)
+
+    fun setGuideFavoritesOnly(favoritesOnly: Boolean) {
+        prefs.edit().putBoolean(KEY_GUIDE_FAVORITES, favoritesOnly).apply()
+    }
+
+    fun setGuideSort(sort: String) {
+        prefs.edit().putString(KEY_GUIDE_SORT, sort).apply()
+    }
+
+    // -- Permisos de Cast -----------------------------------------------------
+
+    /** True si ya se pidieron una vez los permisos de Cast/notificaciones. */
+    fun wasCastPermissionsAsked(): Boolean = prefs.getBoolean(KEY_CAST_PERMS_ASKED, false)
+
+    fun setCastPermissionsAsked() {
+        prefs.edit().putBoolean(KEY_CAST_PERMS_ASKED, true).apply()
+    }
+
+    // -- Onboarding -----------------------------------------------------------
+
+    /** True cuando el usuario terminó o saltó el tutorial de primer arranque. */
+    val onboardingCompleted: Flow<Boolean> = booleanFlow(KEY_ONBOARDING_DONE, default = false)
+
+    fun setOnboardingCompleted(completed: Boolean) {
+        prefs.edit().putBoolean(KEY_ONBOARDING_DONE, completed).apply()
+    }
+
+    /** True cuando ya se mostró la pista única de la pantalla de TV en directo. */
+    val liveHintSeen: Flow<Boolean> = booleanFlow(KEY_LIVE_HINT_SEEN, default = false)
+
+    fun setLiveHintSeen() {
+        prefs.edit().putBoolean(KEY_LIVE_HINT_SEEN, true).apply()
+    }
+
     // -- Backfill de idioma ---------------------------------------------------
 
     /** Versión del detector de idioma ya aplicada al catálogo. */
@@ -117,6 +155,11 @@ class AppPreferences @Inject constructor(
         const val KEY_LANG_TAG_VERSION = "language_tag_version"
         const val KEY_PIN_SALT = "parental_pin_salt"
         const val KEY_PIN_HASH = "parental_pin_hash"
+        const val KEY_GUIDE_FAVORITES = "guide_favorites_only"
+        const val KEY_GUIDE_SORT = "guide_sort"
+        const val KEY_CAST_PERMS_ASKED = "cast_perms_asked"
+        const val KEY_ONBOARDING_DONE = "onboarding_completed"
+        const val KEY_LIVE_HINT_SEEN = "live_hint_seen"
         const val SALT_BYTES = 16
     }
 }

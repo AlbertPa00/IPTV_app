@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -22,10 +23,14 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -46,11 +51,11 @@ import com.iptv.feature.epg.ui.GuideScreen
 import com.iptv.feature.player.ui.PlayerScreen
 import com.iptv.feature.series.ui.SeriesDetailsScreen
 import com.iptv.feature.source.ui.AddSourceScreen
+import com.iptv.feature.source.ui.OnboardingScreen
 import com.iptv.feature.source.ui.SettingsScreen
-import com.iptv.feature.source.ui.WelcomeScreen
 
 private object Routes {
-    const val Welcome = "welcome"
+    const val Onboarding = "onboarding"
     const val AddSource = "add-source"
     const val LiveTv = "live"
     const val Movies = "movies"
@@ -91,16 +96,41 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.isTabSwitch(): Boo
 @Composable
 fun IptvApp(viewModel: RootViewModel = hiltViewModel()) {
     val hasSources by viewModel.hasSources.collectAsStateWithLifecycle()
+    val onboardingDone by viewModel.onboardingCompleted.collectAsStateWithLifecycle()
     val navController = rememberNavController()
+    var startRoute by remember { mutableStateOf<String?>(null) }
 
-    when (val available = hasSources) {
+    // El destino inicial se fija una sola vez: si reaccionara a hasSources en
+    // vivo, el alta de la lista demo durante el tutorial recrearía el NavHost
+    // y expulsaría al usuario del pager a mitad del paso.
+    LaunchedEffect(hasSources, onboardingDone) {
+        val sources = hasSources
+        val done = onboardingDone
+        if (startRoute == null && sources != null && done != null) {
+            startRoute = when {
+                sources -> Routes.LiveTv
+                done -> Routes.AddSource
+                else -> Routes.Onboarding
+            }
+        }
+    }
+
+    when (val route = startRoute) {
         null -> LoadingState()
-        else -> AppNavigation(navController, startDestination = if (available) Routes.LiveTv else Routes.Welcome)
+        else -> AppNavigation(
+            navController = navController,
+            startDestination = route,
+            onOnboardingComplete = viewModel::completeOnboarding,
+        )
     }
 }
 
 @Composable
-private fun AppNavigation(navController: NavHostController, startDestination: String) {
+private fun AppNavigation(
+    navController: NavHostController,
+    startDestination: String,
+    onOnboardingComplete: () -> Unit,
+) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val showBottomBar = mainDestinations.any { destination ->
@@ -121,14 +151,31 @@ private fun AppNavigation(navController: NavHostController, startDestination: St
             popEnterTransition = { if (isTabSwitch()) EnterTransition.None else fadeIn(tween(150)) },
             popExitTransition = { if (isTabSwitch()) ExitTransition.None else fadeOut(tween(150)) },
         ) {
-            composable(Routes.Welcome) {
-                WelcomeScreen(onStart = { navController.navigate(Routes.AddSource) })
+            composable(Routes.Onboarding) {
+                OnboardingScreen(
+                    onSkip = {
+                        onOnboardingComplete()
+                        navController.navigate(Routes.AddSource)
+                    },
+                    onAddOwnSource = { navController.navigate(Routes.AddSource) },
+                    onDone = {
+                        onOnboardingComplete()
+                        navController.navigate(Routes.LiveTv) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                inclusive = true
+                            }
+                        }
+                    },
+                )
             }
             composable(Routes.AddSource) {
                 AddSourceScreen(
                     onDone = {
+                        onOnboardingComplete()
                         navController.navigate(Routes.LiveTv) {
-                            popUpTo(Routes.Welcome) { inclusive = true }
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                inclusive = true
+                            }
                         }
                     },
                     onBack = { navController.popBackStack() },
@@ -162,6 +209,7 @@ private fun AppNavigation(navController: NavHostController, startDestination: St
                 SettingsScreen(
                     appVersion = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                     onAddSource = { navController.navigate(Routes.AddSource) },
+                    onShowTutorial = { navController.navigate(Routes.Onboarding) },
                 )
             }
             composable(
@@ -198,7 +246,7 @@ private fun MainBottomBar(navController: NavHostController) {
     val currentDestination = backStackEntry?.destination
 
     NavigationBar(
-        containerColor = Color(0xFF0B0C0F),
+        containerColor = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
     ) {
         mainDestinations.forEach { destination ->
@@ -215,10 +263,10 @@ private fun MainBottomBar(navController: NavHostController) {
                 icon = { Icon(destination.icon, contentDescription = null) },
                 label = { Text(stringResource(destination.labelRes)) },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color.White,
-                    selectedTextColor = Color.White,
-                    unselectedIconColor = Color(0xFF8E8E93),
-                    unselectedTextColor = Color(0xFF8E8E93),
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     indicatorColor = Color.Transparent,
                 ),
             )

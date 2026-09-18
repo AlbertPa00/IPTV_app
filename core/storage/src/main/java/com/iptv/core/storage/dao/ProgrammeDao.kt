@@ -43,6 +43,9 @@ data class GuideRow(
     val nextEndUtc: Long?,
 )
 
+/** Orden de la guía: el del proveedor, alfabético o favoritos primero. */
+enum class GuideSort { PROVIDER, NAME, FAVORITES }
+
 @Dao
 interface ProgrammeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -64,6 +67,13 @@ interface ProgrammeDao {
     @Query("SELECT EXISTS(SELECT 1 FROM programmes WHERE sourceId = :sourceId LIMIT 1)")
     fun observeHasProgrammes(sourceId: Long): Flow<Boolean>
 
+    /**
+     * Marca de agua de la tabla: cambia con cada lote insertado, así una
+     * importación EPG despierta los recálculos de guía sin sondeo fijo.
+     */
+    @Query("SELECT MAX(id) FROM programmes WHERE sourceId = :sourceId")
+    fun observeWatermark(sourceId: Long): Flow<Long?>
+
     /** true si la EPG importada cubre el instante actual (hay programas sin terminar). */
     @Query("SELECT EXISTS(SELECT 1 FROM programmes WHERE sourceId = :sourceId AND endUtc > :atUtc LIMIT 1)")
     suspend fun hasFutureProgrammes(sourceId: Long, atUtc: Long): Boolean
@@ -82,10 +92,14 @@ interface ProgrammeDao {
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE'
           AND (c.categoryId IS NULL OR c.categoryId NOT IN
               (SELECT id FROM categories WHERE isLocked = 1 OR hidden = 1))
-        ORDER BY c.sortOrder, c.name
+          AND (:favoritesOnly = 0 OR c.isFavorite = 1)
+        ORDER BY
+          CASE WHEN :sort = 'NAME' THEN c.nameNorm END,
+          CASE WHEN :sort = 'FAVORITES' THEN c.isFavorite END DESC,
+          c.sortOrder, c.name
         """
     )
-    suspend fun guideChannels(sourceId: Long): List<GuideChannelRow>
+    suspend fun guideChannels(sourceId: Long, favoritesOnly: Boolean, sort: String): List<GuideChannelRow>
 
     @Query(
         """
@@ -113,8 +127,13 @@ interface ProgrammeDao {
      * emparejamiento en memoria. Los programas casan por tvgId (channelKey) o
      * por nombre normalizado (channelNameNorm), como hacía la consulta previa.
      */
-    suspend fun guideSnapshot(sourceId: Long, atUtc: Long): List<GuideRow> {
-        val channels = guideChannels(sourceId)
+    suspend fun guideSnapshot(
+        sourceId: Long,
+        atUtc: Long,
+        favoritesOnly: Boolean = false,
+        sort: GuideSort = GuideSort.PROVIDER,
+    ): List<GuideRow> {
+        val channels = guideChannels(sourceId, favoritesOnly, sort.name)
         if (channels.isEmpty()) return emptyList()
         val current = currentProgrammes(sourceId, atUtc)
         val next = nextProgrammes(sourceId, atUtc)

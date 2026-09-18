@@ -3,6 +3,7 @@ package com.iptv.feature.series.ui
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.iptv.feature.series.R
 import com.iptv.feature.series.data.SeriesDetails
 import com.iptv.feature.series.data.SeriesEpisode
 import com.iptv.feature.series.data.SeriesRepository
@@ -26,7 +27,7 @@ class SeriesViewModel @Inject constructor(
         val loading: Boolean = true,
         val details: SeriesDetails? = null,
         val selectedSeason: Int? = null,
-        val error: String? = null,
+        @androidx.annotation.StringRes val errorRes: Int? = null,
         val preparingEpisodeId: String? = null,
     )
 
@@ -40,7 +41,7 @@ class SeriesViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, error = null) }
+            _uiState.update { it.copy(loading = true, errorRes = null) }
             runCatching { repository.load(seriesId) }
                 .onSuccess { details ->
                     _uiState.value = UiState(
@@ -49,8 +50,8 @@ class SeriesViewModel @Inject constructor(
                         selectedSeason = details.seasons.firstOrNull()?.number,
                     )
                 }
-                .onFailure { error ->
-                    _uiState.update { it.copy(loading = false, error = error.message ?: "Error al cargar la serie") }
+                .onFailure {
+                    _uiState.update { it.copy(loading = false, errorRes = R.string.series_error_load) }
                 }
         }
     }
@@ -60,11 +61,11 @@ class SeriesViewModel @Inject constructor(
     fun play(episode: SeriesEpisode) {
         if (_uiState.value.preparingEpisodeId != null) return
         viewModelScope.launch {
-            _uiState.update { it.copy(preparingEpisodeId = episode.id, error = null) }
+            _uiState.update { it.copy(preparingEpisodeId = episode.id, errorRes = null) }
             runCatching { repository.prepareEpisode(seriesId, episode) }
                 .onSuccess { _openPlayer.emit(it) }
-                .onFailure { error ->
-                    _uiState.update { it.copy(error = error.message ?: "No se pudo abrir el episodio") }
+                .onFailure {
+                    _uiState.update { it.copy(errorRes = R.string.series_error_play) }
                 }
             _uiState.update { it.copy(preparingEpisodeId = null) }
         }
