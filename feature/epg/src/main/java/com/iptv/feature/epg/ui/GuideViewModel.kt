@@ -10,6 +10,7 @@ import com.iptv.core.storage.dao.SourceDao
 import com.iptv.feature.epg.data.EpgRepository
 import com.iptv.feature.epg.data.EpgSyncState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
@@ -120,7 +122,7 @@ class GuideViewModel @Inject constructor(
                 programmeDao.observeWatermark(sourceId).drop(1).debounce(5_000).first()
             }
         }
-    }
+    }.flowOn(Dispatchers.Default)
 
     val syncState = MutableStateFlow<EpgSyncState?>(null)
 

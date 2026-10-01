@@ -17,6 +17,7 @@ import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.SourceEntity
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.currentCoroutineContext
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -154,7 +156,7 @@ class LiveTvViewModel @Inject constructor(
                 programmeDao.observeWatermark(sourceId).drop(1).debounce(5_000).first()
             }
         }
-    }
+    }.flowOn(Dispatchers.Default)
 
     // El texto de búsqueda se debilita para no reconstruir el Pager a cada
     // pulsación; el resto de filtros (favoritos, grupo) aplican al instante.

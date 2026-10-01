@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -204,7 +205,9 @@ internal fun PosterCard(
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Graphite),
-        elevation = CardDefaults.cardElevation(defaultElevation = 5.dp),
+        // Sin sombra: 5dp de elevación por tarjeta es coste de GPU por frame
+        // durante el fling y sobre fondo grafito apenas se aprecia.
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier.aspectRatio(2f / 3f).combinedClickable(
             onClick = onClick,
             onLongClick = onLongClick?.let { longClick ->
@@ -221,13 +224,18 @@ internal fun PosterCard(
                 contentDescription = item.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+                fadeIn = false,
             )
+            // Scrim sólo bajo el texto: el gradiente a altura completa era
+            // overdraw doble por tarjeta en cada frame de scroll.
             Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.88f)),
+                Modifier.fillMaxWidth().fillMaxHeight(0.42f)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.88f)),
+                        ),
                     ),
-                ),
             )
             IconButton(
                 onClick = {

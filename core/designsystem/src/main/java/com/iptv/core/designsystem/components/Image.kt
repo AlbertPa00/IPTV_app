@@ -18,6 +18,10 @@ import coil3.request.crossfade
  *
  * [onError] permite al llamador sustituir el marcador por un fallback con
  * más significado (p. ej. el icono de play en los logos de canal).
+ *
+ * [fadeIn] desactiva el fundido de entrada: en parrillas densas cada póster
+ * que entra durante un fling lanzaba una transición alfa simultánea — jank
+ * medible. En héroes y fichas sigue activo.
  */
 @Composable
 fun IptvAsyncImage(
@@ -26,12 +30,13 @@ fun IptvAsyncImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
     onError: ((AsyncImagePainter.State.Error) -> Unit)? = null,
+    fadeIn: Boolean = true,
 ) {
     val placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
     AsyncImage(
         model = ImageRequest.Builder(LocalContext.current)
             .data(model)
-            .crossfade(true)
+            .apply { if (fadeIn) crossfade(true) }
             .build(),
         contentDescription = contentDescription,
         contentScale = contentScale,
