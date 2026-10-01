@@ -14,6 +14,8 @@
     <string name="player_live">LIVE</string>
     <string name="player_on_demand">ON DEMAND</string>
     <string name="player_loading">Loading…</string>
+    <string name="player_reconnecting">Unstable signal — reconnecting (attempt %1$d)</string>
+    <string name="player_no_connection">No internet connection — playback will resume automatically</string>
     <string name="player_playback_interrupted">Playback interrupted</string>
     <string name="player_retry">Retry</string>
     <string name="player_cast">Cast to Chromecast</string>

@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -55,6 +56,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.common.text.formatBytes
 import com.iptv.core.designsystem.components.ConfirmDeleteDialog
 import com.iptv.core.storage.entity.CategoryEntity
@@ -83,6 +85,7 @@ fun SettingsScreen(
     var showLicenses by remember { mutableStateOf(false) }
     var showPrivacy by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
+    var showBufferDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -210,6 +213,51 @@ fun SettingsScreen(
                     Text(stringResource(R.string.settings_categories_manage))
                 }
             }
+        }
+
+        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+
+        item {
+            Text(
+                stringResource(R.string.settings_playback_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+        }
+
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showBufferDialog = true }
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.settings_buffer_size),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        bufferProfileLabel(settings.bufferProfile),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        item {
+            SwitchRow(
+                title = stringResource(R.string.settings_reconnect_continuous),
+                subtitle = stringResource(R.string.settings_reconnect_continuous_sub),
+                checked = settings.liveReconnectContinuous,
+                onCheckedChange = settingsViewModel::setLiveReconnectContinuous,
+            )
         }
 
         item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
@@ -379,6 +427,51 @@ fun SettingsScreen(
         )
     }
 
+    if (showBufferDialog) {
+        AlertDialog(
+            onDismissRequest = { showBufferDialog = false },
+            title = { Text(stringResource(R.string.settings_buffer_size)) },
+            text = {
+                Column {
+                    listOf(
+                        AppPreferences.BUFFER_AUTO to R.string.settings_buffer_auto,
+                        AppPreferences.BUFFER_LOW to R.string.settings_buffer_low,
+                        AppPreferences.BUFFER_HIGH to R.string.settings_buffer_high,
+                    ).forEach { (profile, labelRes) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    settingsViewModel.setBufferProfile(profile)
+                                    showBufferDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                stringResource(labelRes),
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            if (settings.bufferProfile == profile) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBufferDialog = false }) {
+                    Text(stringResource(R.string.settings_close))
+                }
+            },
+        )
+    }
+
     settings.pinPrompt?.let { prompt ->
         PinDialog(
             prompt = prompt,
@@ -501,6 +594,15 @@ private fun downloadStatusLabel(download: DownloadEntity): String = when (downlo
 
     else -> stringResource(R.string.settings_download_state_queued)
 }
+
+@Composable
+private fun bufferProfileLabel(profile: String): String = stringResource(
+    when (profile) {
+        AppPreferences.BUFFER_LOW -> R.string.settings_buffer_low
+        AppPreferences.BUFFER_HIGH -> R.string.settings_buffer_high
+        else -> R.string.settings_buffer_auto
+    },
+)
 
 @Composable
 private fun SwitchRow(

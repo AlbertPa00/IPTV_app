@@ -6,7 +6,8 @@
     <string name="epg_retry">Reintentar</string>
     <string name="epg_syncing">Importando guía… %1$d programas</string>
     <string name="epg_empty">Todavía no hay datos de guía. Sincroniza la EPG de tu proveedor.</string>
-    <string name="epg_empty_favorites">Ninguno de tus canales favoritos tiene datos de guía.</string>
+    <string name="epg_empty_favorites">No tienes canales favoritos con guía. Marca canales con ★ o muestra la guía completa.</string>
+    <string name="epg_show_all">Mostrar todos</string>
     <string name="epg_favorites">Favoritos</string>
     <string name="epg_sort_provider">Orden del proveedor</string>
     <string name="epg_sort_name">Nombre A-Z</string>

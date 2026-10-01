@@ -82,6 +82,13 @@
     <string name="settings_categories_manage_sub">Hide, lock and reorder your playlist groups</string>
     <string name="settings_crash_reporting">Crash reporting</string>
     <string name="settings_crash_reporting_sub">Send anonymous crash reports to help improve the app</string>
+    <string name="settings_playback_title">Playback</string>
+    <string name="settings_buffer_size">Buffer size</string>
+    <string name="settings_buffer_auto">Automatic</string>
+    <string name="settings_buffer_low">Small: faster start and channel zapping</string>
+    <string name="settings_buffer_high">Large: more stable on unstable signals</string>
+    <string name="settings_reconnect_continuous">Continuous live reconnection</string>
+    <string name="settings_reconnect_continuous_sub">Retry without limit when a channel drops</string>
     <string name="category_show">Show</string>
     <string name="category_hide">Hide</string>
     <string name="category_move_up">Move up</string>

@@ -82,6 +82,13 @@
     <string name="settings_categories_manage_sub">Ocultar, bloquear y reordenar los grupos de tu lista</string>
     <string name="settings_crash_reporting">Informes de fallos</string>
     <string name="settings_crash_reporting_sub">Enviar informes de error anónimos para ayudar a mejorar la app</string>
+    <string name="settings_playback_title">Reproducción</string>
+    <string name="settings_buffer_size">Tamaño de búfer</string>
+    <string name="settings_buffer_auto">Automático</string>
+    <string name="settings_buffer_low">Reducido: arranque y zapping más rápidos</string>
+    <string name="settings_buffer_high">Amplio: más estable con señal inestable</string>
+    <string name="settings_reconnect_continuous">Reconexión continua en directo</string>
+    <string name="settings_reconnect_continuous_sub">Reintentar sin límite cuando un canal se corta</string>
     <string name="category_show">Mostrar</string>
     <string name="category_hide">Ocultar</string>
     <string name="category_move_up">Subir</string>

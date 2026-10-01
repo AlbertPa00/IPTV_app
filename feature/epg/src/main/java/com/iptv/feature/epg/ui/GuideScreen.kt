@@ -107,7 +107,11 @@ fun GuideScreen(
             sync is EpgSyncState.Failed -> StatusMessage(errorText((sync as EpgSyncState.Failed).reason), viewModel::sync)
             rows.isEmpty() -> StatusMessage(
                 stringResource(if (filter.favoritesOnly) R.string.epg_empty_favorites else R.string.epg_empty),
-                viewModel::sync,
+                // Con el filtro de favoritos la causa no es la EPG sino que
+                // no hay favoritos (con guía): la acción es "mostrar todos",
+                // no resincronizar.
+                if (filter.favoritesOnly) viewModel::toggleFavorites else viewModel::sync,
+                stringResource(if (filter.favoritesOnly) R.string.epg_show_all else R.string.epg_sync),
             )
             else -> LazyColumn(
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
@@ -207,14 +211,18 @@ private fun SyncProgress(count: Int) {
 }
 
 @Composable
-private fun StatusMessage(message: String, retry: () -> Unit) {
+private fun StatusMessage(
+    message: String,
+    action: () -> Unit,
+    actionLabel: String = stringResource(R.string.epg_sync),
+) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(Icons.Filled.Tv, contentDescription = null, tint = GuideAccent, modifier = Modifier.size(48.dp))
             Spacer(Modifier.height(12.dp))
             Text(message, color = GuideMuted, style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.height(16.dp))
-            Button(onClick = retry) { Text(stringResource(R.string.epg_sync)) }
+            Button(onClick = action) { Text(actionLabel) }
         }
     }
 }

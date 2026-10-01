@@ -105,6 +105,31 @@ class AppPreferences @Inject constructor(
         prefs.edit().putBoolean(KEY_CAST_PERMS_ASKED, true).apply()
     }
 
+    // -- Reproducción ---------------------------------------------------------
+
+    /**
+     * Perfil de búfer del reproductor: "auto" (defaults de ExoPlayer),
+     * "low" (arranque/zapping rápido) u "high" (señal inestable).
+     */
+    val bufferProfile: Flow<String> = stringFlow(KEY_BUFFER_PROFILE).map { it ?: BUFFER_AUTO }
+
+    fun bufferProfile(): String = prefs.getString(KEY_BUFFER_PROFILE, BUFFER_AUTO) ?: BUFFER_AUTO
+
+    fun setBufferProfile(profile: String) {
+        prefs.edit().putString(KEY_BUFFER_PROFILE, profile).apply()
+    }
+
+    /** En directo: reintento continuo (sin tope) en lugar de capado a unos intentos. */
+    val liveReconnectContinuous: Flow<Boolean> =
+        booleanFlow(KEY_LIVE_RECONNECT_CONTINUOUS, default = false)
+
+    fun isLiveReconnectContinuous(): Boolean =
+        prefs.getBoolean(KEY_LIVE_RECONNECT_CONTINUOUS, false)
+
+    fun setLiveReconnectContinuous(continuous: Boolean) {
+        prefs.edit().putBoolean(KEY_LIVE_RECONNECT_CONTINUOUS, continuous).apply()
+    }
+
     // -- Onboarding -----------------------------------------------------------
 
     /** True cuando el usuario terminó o saltó el tutorial de primer arranque. */
@@ -167,7 +192,7 @@ class AppPreferences @Inject constructor(
     private fun ByteArray.toHex(): String =
         joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
-    private companion object {
+    companion object {
         const val PREFS_NAME = "iptv_prefs"
         const val KEY_AUTO_REFRESH = "auto_refresh_enabled"
         const val KEY_WIFI_ONLY = "auto_refresh_wifi_only"
@@ -182,6 +207,11 @@ class AppPreferences @Inject constructor(
         const val KEY_LIVE_HINT_SEEN = "live_hint_seen"
         const val KEY_DOWNLOADS_WIFI_ONLY = "downloads_wifi_only"
         const val KEY_EPG_LAST_SYNC = "epg_last_sync_at"
+        const val KEY_BUFFER_PROFILE = "buffer_profile"
+        const val KEY_LIVE_RECONNECT_CONTINUOUS = "live_reconnect_continuous"
+        const val BUFFER_AUTO = "auto"
+        const val BUFFER_LOW = "low"
+        const val BUFFER_HIGH = "high"
         const val SALT_BYTES = 16
     }
 }

@@ -3,9 +3,11 @@ package com.iptv.app
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptv.core.common.prefs.AppPreferences
+import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.ProgrammeDao
 import com.iptv.core.storage.dao.SourceDao
 import com.iptv.feature.epg.data.EpgRepository
+import com.iptv.feature.source.data.SourceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,8 +23,10 @@ import javax.inject.Inject
 @HiltViewModel
 class RootViewModel @Inject constructor(
     sourceDao: SourceDao,
+    private val channelDao: ChannelDao,
     private val programmeDao: ProgrammeDao,
     private val appPreferences: AppPreferences,
+    private val sourceRepository: SourceRepository,
     epgRepository: EpgRepository,
 ) : ViewModel() {
 
@@ -39,21 +43,39 @@ class RootViewModel @Inject constructor(
         appPreferences.setOnboardingCompleted(true)
     }
 
+    // Catálogo: una sola sincronización automática por fuente y sesión —
+    // evita bucles si la fuente devuelve legítimamente cero canales.
+    private val catalogSyncAttempted = mutableSetOf<Long>()
+
     init {
-        // La EPG se refresca sola cuando el catálogo de la fuente activa
-        // cambia (alta, refresco manual o cambio de fuente) o al abrir la app
-        // con la guía obsoleta: el XMLTV cubre ~5 días, así que sin el chequeo
+        // Catálogo + EPG en segundo plano al abrir la app.
+        //
+        // Catálogo: si la fuente activa nunca se sincronizó o su catálogo
+        // quedó vacío (sync interrumpida, BD limpiada), el refresco arranca
+        // solo — antes dependía del botón manual o del worker diario.
+        //
+        // EPG: se refresca cuando el catálogo de la fuente activa cambia
+        // (alta, refresco manual o cambio de fuente) o al abrir la app con
+        // la guía obsoleta: el XMLTV cubre ~5 días, así que sin el chequeo
         // de antigüedad la recarga dependía por completo del worker diario —
         // que MIUI puede diferir horas o matar con el ahorro de batería.
-        // Sin estas comprobaciones cada arranque en frío re-descargaba el
-        // XMLTV completo y cada refresco de catálogo abortaba una descarga
-        // en curso.
         viewModelScope.launch {
             sourceDao.observeActive()
-                .map { it?.id to it?.lastSyncAt }
-                .distinctUntilChanged()
-                .collectLatest { (id, lastSyncAt) ->
-                    if (id == null || lastSyncAt == null) return@collectLatest
+                .distinctUntilChanged { a, b ->
+                    a?.id == b?.id && a?.lastSyncAt == b?.lastSyncAt
+                }
+                .collectLatest { source ->
+                    if (source == null) return@collectLatest
+                    val id = source.id
+                    val catalogEmpty = channelDao.countBySource(id) == 0
+                    if ((source.lastSyncAt == null || catalogEmpty) &&
+                        catalogSyncAttempted.add(id)
+                    ) {
+                        // Al terminar, lastSyncAt cambia → la nueva emisión
+                        // reevalúa la EPG sobre el catálogo ya poblado.
+                        sourceRepository.refresh(source).collect { /* progreso no visible */ }
+                    }
+                    if (source.lastSyncAt == null) return@collectLatest
                     val now = System.currentTimeMillis()
                     val empty = !programmeDao.hasFutureProgrammes(id, now)
                     val stale = now - appPreferences.epgLastSyncAt() > EPG_STALE_MILLIS

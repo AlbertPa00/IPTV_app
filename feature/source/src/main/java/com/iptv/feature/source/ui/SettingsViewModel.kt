@@ -60,6 +60,8 @@ class SettingsViewModel @Inject constructor(
         val downloadsWifiOnly: Boolean = true,
         val crashReporting: Boolean = false,
         val parentalEnabled: Boolean = false,
+        val bufferProfile: String = AppPreferences.BUFFER_AUTO,
+        val liveReconnectContinuous: Boolean = false,
         val categories: List<CategoryEntity> = emptyList(),
         val pinPrompt: PinPrompt? = null,
         val pinError: Boolean = false,
@@ -98,18 +100,32 @@ class SettingsViewModel @Inject constructor(
         ::SyncPrefs,
     )
 
+    private data class PlaybackPrefs(
+        val bufferProfile: String,
+        val liveReconnectContinuous: Boolean,
+    )
+
+    private val playbackPrefs = combine(
+        prefs.bufferProfile,
+        prefs.liveReconnectContinuous,
+        ::PlaybackPrefs,
+    )
+
     val uiState: StateFlow<UiState> = combine(
         syncPrefs,
+        playbackPrefs,
         prefs.hasPin,
         categories,
         combine(pinPrompt, pinError, managingCategories) { p, e, m -> Triple(p, e, m) },
-    ) { sync, hasPin, cats, (prompt, error, managing) ->
+    ) { sync, playback, hasPin, cats, (prompt, error, managing) ->
         UiState(
             autoRefresh = sync.autoRefresh,
             wifiOnly = sync.wifiOnly,
             downloadsWifiOnly = sync.downloadsWifiOnly,
             crashReporting = sync.crashReporting,
             parentalEnabled = hasPin,
+            bufferProfile = playback.bufferProfile,
+            liveReconnectContinuous = playback.liveReconnectContinuous,
             categories = cats,
             pinPrompt = prompt,
             pinError = error,
@@ -212,6 +228,18 @@ class SettingsViewModel @Inject constructor(
 
     fun setCrashReporting(enabled: Boolean) {
         prefs.setCrashReporting(enabled)
+    }
+
+    // -- Reproducción ---------------------------------------------------------
+
+    /** Perfil de búfer: "auto", "low" (arranque rápido) u "high" (inestable). */
+    fun setBufferProfile(profile: String) {
+        prefs.setBufferProfile(profile)
+    }
+
+    /** En directo: reintentar sin límite cuando un canal se corta. */
+    fun setLiveReconnectContinuous(continuous: Boolean) {
+        prefs.setLiveReconnectContinuous(continuous)
     }
 
     /** Entrada del usuario al flujo de control parental. */

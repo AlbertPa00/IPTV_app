@@ -554,10 +554,13 @@ fun PlayerScreen(
 
         // Un stream que no arranca dejaba la pantalla negra sin feedback:
         // mientras bufferiza se muestra un indicador, visible aunque los
-        // controles estén ocultos; el vigía del ViewModel lo convierte en
-        // error si la espera se alarga demasiado.
-        if (playbackState == Player.STATE_BUFFERING && !isInPipMode &&
-            !state.isCasting && !state.isCastConnecting && state.errorRes == null
+        // controles estén ocultos. Si el ViewModel está reconectando se dice
+        // explícito (con el nº de intento) y sin red se avisa de que la
+        // reproducción se reanudará sola.
+        val reconnectAttempt = state.reconnectAttempt
+        if ((playbackState == Player.STATE_BUFFERING || reconnectAttempt != null) &&
+            !isInPipMode && !state.isCasting && !state.isCastConnecting &&
+            state.errorRes == null
         ) {
             Column(
                 modifier = Modifier.align(Alignment.Center),
@@ -566,7 +569,12 @@ fun PlayerScreen(
                 CircularProgressIndicator(color = PlayerCarmine)
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = stringResource(R.string.player_loading),
+                    text = when {
+                        state.networkLost -> stringResource(R.string.player_no_connection)
+                        reconnectAttempt != null ->
+                            stringResource(R.string.player_reconnecting, reconnectAttempt)
+                        else -> stringResource(R.string.player_loading)
+                    },
                     color = PlayerMuted,
                     style = MaterialTheme.typography.bodyMedium,
                 )

@@ -14,6 +14,8 @@
     <string name="player_live">EN DIRECTO</string>
     <string name="player_on_demand">BAJO DEMANDA</string>
     <string name="player_loading">Cargando…</string>
+    <string name="player_reconnecting">Señal inestable — reconectando (intento %1$d)</string>
+    <string name="player_no_connection">Sin conexión a internet — se reanudará solo</string>
     <string name="player_playback_interrupted">Reproducción interrumpida</string>
     <string name="player_retry">Reintentar</string>
     <string name="player_cast">Enviar a Chromecast</string>
