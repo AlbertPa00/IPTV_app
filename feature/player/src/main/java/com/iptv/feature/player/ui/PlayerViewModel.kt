@@ -13,6 +13,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -24,13 +25,18 @@ import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
+import com.iptv.core.common.download.DownloadController
 import com.iptv.core.common.pip.PipController
 import com.iptv.core.network.DEFAULT_USER_AGENT
 import com.iptv.core.storage.dao.ChannelDao
+import com.iptv.core.storage.dao.DownloadDao
 import com.iptv.core.storage.dao.PlaybackHistoryDao
 import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.storage.dao.SourceDao
 import com.iptv.core.storage.entity.ChannelEntity
+import com.iptv.core.storage.entity.DownloadEntity
+import com.iptv.core.storage.entity.DownloadSections
+import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.core.storage.entity.Kinds
 import com.iptv.core.storage.entity.PlaybackHistoryEntity
 import com.iptv.feature.player.R
@@ -47,8 +53,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -56,6 +65,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 /** Reproducción local/Cast. Ambos players pertenecen al ViewModel y se liberan en onCleared. */
+@kotlinx.coroutines.ExperimentalCoroutinesApi
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
@@ -64,6 +74,8 @@ class PlayerViewModel @Inject constructor(
     private val channelDao: ChannelDao,
     private val sourceDao: SourceDao,
     private val playbackHistoryDao: PlaybackHistoryDao,
+    private val downloadDao: DownloadDao,
+    private val downloadController: DownloadController,
     private val pipController: PipController,
     private val prefs: AppPreferences,
 ) : ViewModel() {
@@ -103,6 +115,13 @@ class PlayerViewModel @Inject constructor(
     private var castReferrer: String? = null
     private var castTransferPending = false
     private var castTransferPlayWhenReady = false
+
+    /**
+     * URL remota del item en reproducción. Cuando el media local es un
+     * fichero descargado (file://) el receptor Cast sigue necesitando la
+     * URL http original.
+     */
+    private var remoteUrl: String? = null
 
     /** HLS wrap mode of the in-flight/current cast item ("r", "t", "n"). */
     private var activeCastHlsMode: String? = null
@@ -180,6 +199,45 @@ class PlayerViewModel @Inject constructor(
                 it.copy(channel = channel.copy(isFavorite = !channel.isFavorite))
             }
         }
+    }
+
+    // -- Descargas (sólo VOD/episodios) ---------------------------------------
+
+    private val downloadChannelId = MutableStateFlow(channelId)
+
+    /** Descarga asociada al contenido actual; null = no descargado. */
+    val download: StateFlow<DownloadEntity?> = downloadChannelId
+        .flatMapLatest { downloadDao.observeByChannel(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * Botón de descarga del reproductor: sin descarga la encola, en curso la
+     * cancela y fallida reintenta. Con la descarga completada la pantalla
+     * pide confirmación y llama a [deleteDownload].
+     */
+    fun toggleDownload() {
+        val channel = _uiState.value.channel ?: return
+        if (channel.kind == Kinds.LIVE) return
+        val section = if (channel.externalId.startsWith("episode:")) {
+            DownloadSections.EPISODE
+        } else {
+            DownloadSections.MOVIE
+        }
+        viewModelScope.launch {
+            when (download.value?.status) {
+                null, DownloadStatus.FAILED ->
+                    downloadController.enqueue(channel.id, section)
+                DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING ->
+                    downloadController.cancel(channel.id)
+                else -> Unit
+            }
+        }
+    }
+
+    /** Borra la descarga actual y su fichero tras confirmar en la UI. */
+    fun deleteDownload() {
+        val id = download.value?.id ?: return
+        viewModelScope.launch { downloadController.delete(id) }
     }
 
     // -- Permisos de Cast (notificación + descubrimiento) ---------------------
@@ -391,12 +449,17 @@ class PlayerViewModel @Inject constructor(
 
         val item = buildMediaItem(channel, isLive)
         mediaItem = item
+        remoteUrl = channel.streamUrl
         // EXTENSION_RENDERER_MODE_PREFER: usa el decodificador FFmpeg cuando el
         // dispositivo no tiene códec nativo (AC3/EAC3/DTS, habitual en IPTV).
+        // DefaultDataSource delega file:// a FileDataSource (descargas) y
+        // http(s):// a la fábrica HTTP configurada arriba.
         val renderersFactory = DefaultRenderersFactory(appContext)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
         val newLocalPlayer = ExoPlayer.Builder(appContext, renderersFactory)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(DefaultDataSource.Factory(appContext, httpFactory)),
+            )
             .build()
             .also { it.addListener(localListener) }
         localPlayer = newLocalPlayer
@@ -456,6 +519,7 @@ class PlayerViewModel @Inject constructor(
         val channel = channelDao.findById(id)?.takeUnless { channelDao.isInLockedCategory(id) }
             ?: return
         channelId = id
+        downloadChannelId.value = id
         transcodeEscalated = false
         activeCastHlsMode = null
         // El canal nuevo arranca su propio vigía, sin heredar el tiempo del anterior.
@@ -473,6 +537,7 @@ class PlayerViewModel @Inject constructor(
         }
         val item = buildMediaItem(channel, isLive)
         mediaItem = item
+        remoteUrl = channel.streamUrl
         val resumeAt = if (isLive) 0L else resumePosition(channel.id)
         localPlayer?.let { local ->
             local.setMediaItem(item, resumeAt)
@@ -511,15 +576,25 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    private fun buildMediaItem(channel: ChannelEntity, isLive: Boolean): MediaItem =
-        PlaybackMediaItemFactory.create(
+    private suspend fun buildMediaItem(channel: ChannelEntity, isLive: Boolean): MediaItem {
+        // Si hay una descarga completa se reproduce el fichero local; la URL
+        // remota se conserva aparte para Cast (el receptor no lee file://).
+        val downloaded = downloadDao.findCompleted(channel.id)
+        val uri = downloaded?.localPath
+            ?.let { path -> java.io.File(path).takeIf { it.exists() } }
+            ?.let { android.net.Uri.fromFile(it).toString() }
+            ?: channel.streamUrl
+        return PlaybackMediaItemFactory.create(
             PlaybackMediaItemFactory.spec(
-                streamUrl = channel.streamUrl,
+                streamUrl = uri,
                 title = channel.name,
                 artworkUrl = channel.logoUrl,
                 isLive = isLive,
             ),
         )
+    }
+
+
 
     private fun initializeCastSafely() {
         // El CastPlayer es de proceso (CastPlayerRuntime): sobrevive a esta
@@ -605,7 +680,11 @@ class PlayerViewModel @Inject constructor(
         hlsModeOverride: String? = null,
     ) {
         val remote = castPlayer ?: return
-        val originalUrl = item.localConfiguration?.uri?.toString() ?: return
+        // La URL que sale al receptor es siempre la remota del canal: cuando
+        // el item local es un fichero descargado (file://) el mediaItem no la
+        // lleva.
+        val originalUrl = remoteUrl
+            ?: item.localConfiguration?.uri?.toString() ?: return
         val isLive = item.liveConfiguration != MediaItem.LiveConfiguration.UNSET
         val target = withContext(Dispatchers.IO) {
             resolveCastTarget(originalUrl, isLive, hlsModeOverride)

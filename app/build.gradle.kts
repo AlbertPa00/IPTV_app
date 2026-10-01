@@ -28,8 +28,8 @@ android {
         applicationId = "app.cerocast.iptv"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -78,6 +78,7 @@ kotlin {
 dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:designsystem"))
+    implementation(project(":core:network"))
     implementation(project(":core:storage"))
     implementation(project(":feature:source"))
     implementation(project(":feature:catalog"))
@@ -100,6 +101,13 @@ dependencies {
 
     implementation(libs.androidx.work)
     implementation(libs.androidx.hilt.work)
+    // DownloadWorker descarga con el OkHttp compartido (timeouts UA/Referer).
+    implementation(libs.okhttp)
+    // Decodificador GIF: los paneles Xtream usan GIFs animados en logos de
+    // canal; sin él Coil muestra el placeholder de error (caja vacía).
+    implementation(libs.coil.gif)
+    implementation(libs.coil)
+    implementation(libs.coil.network.okhttp)
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.crashlytics)

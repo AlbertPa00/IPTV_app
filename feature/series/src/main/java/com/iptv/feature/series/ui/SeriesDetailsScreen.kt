@@ -18,6 +18,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -29,6 +32,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -42,10 +48,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.iptv.core.designsystem.components.ConfirmDeleteDialog
 import com.iptv.core.designsystem.components.EmptyState
 import com.iptv.core.designsystem.components.IptvAsyncImage
 import com.iptv.core.designsystem.components.ErrorState
 import com.iptv.core.designsystem.components.LoadingState
+import com.iptv.core.storage.entity.DownloadEntity
+import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.feature.series.R
 import com.iptv.feature.series.data.SeriesDetails
 import com.iptv.feature.series.data.SeriesEpisode
@@ -62,18 +71,33 @@ fun SeriesDetailsScreen(
     viewModel: SeriesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     LaunchedEffect(viewModel) { viewModel.openPlayer.collect(onPlay) }
+    var pendingDelete by remember { mutableStateOf<DownloadEntity?>(null) }
 
     Box(Modifier.fillMaxSize().background(PageBackground)) {
         when {
             state.loading -> LoadingState()
-            state.errorRes != null -> ErrorState(stringResource(state.errorRes!!), onRetry = viewModel::load)
+            state.errorRes != null && state.details == null ->
+                ErrorState(stringResource(state.errorRes!!), onRetry = viewModel::load)
             state.details != null -> SeriesContent(
                 details = state.details!!,
                 selectedSeason = state.selectedSeason,
                 preparingEpisodeId = state.preparingEpisodeId,
+                preparingDownloadId = state.preparingDownloadId,
+                downloads = downloads,
                 onSelectSeason = viewModel::selectSeason,
                 onPlayEpisode = viewModel::play,
+                onToggleDownload = { episode ->
+                    // Episodio ya descargado: el toque borra el fichero, así
+                    // que primero se confirma en el diálogo de abajo.
+                    val existing = downloads[episode.id]
+                    if (existing?.status == DownloadStatus.DONE) {
+                        pendingDelete = existing
+                    } else {
+                        viewModel.toggleDownload(episode)
+                    }
+                },
             )
             else -> ErrorState(stringResource(R.string.series_error_load), onRetry = viewModel::load)
         }
@@ -85,6 +109,17 @@ fun SeriesDetailsScreen(
             )
         }
     }
+    pendingDelete?.let { download ->
+        ConfirmDeleteDialog(
+            title = stringResource(R.string.series_download_delete_title),
+            text = stringResource(R.string.series_download_delete_confirm, download.title),
+            onConfirm = {
+                pendingDelete = null
+                viewModel.deleteDownloadById(download.id)
+            },
+            onDismiss = { pendingDelete = null },
+        )
+    }
 }
 
 @Composable
@@ -92,8 +127,11 @@ private fun SeriesContent(
     details: SeriesDetails,
     selectedSeason: Int?,
     preparingEpisodeId: String?,
+    preparingDownloadId: String?,
+    downloads: Map<String, DownloadEntity>,
     onSelectSeason: (Int) -> Unit,
     onPlayEpisode: (SeriesEpisode) -> Unit,
+    onToggleDownload: (SeriesEpisode) -> Unit,
 ) {
     val selected = details.seasons.firstOrNull { it.number == selectedSeason }
     LazyColumn(Modifier.fillMaxSize()) {
@@ -156,7 +194,14 @@ private fun SeriesContent(
             item { EmptyState(stringResource(R.string.series_no_episodes), Modifier.height(220.dp)) }
         } else {
             items(selected.episodes, key = { it.id }) { episode ->
-                EpisodeRow(episode, preparingEpisodeId == episode.id, onPlayEpisode)
+                EpisodeRow(
+                    episode = episode,
+                    preparing = preparingEpisodeId == episode.id,
+                    preparingDownload = preparingDownloadId == episode.id,
+                    download = downloads[episode.id],
+                    onPlay = onPlayEpisode,
+                    onToggleDownload = onToggleDownload,
+                )
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
@@ -164,7 +209,14 @@ private fun SeriesContent(
 }
 
 @Composable
-private fun EpisodeRow(episode: SeriesEpisode, preparing: Boolean, onPlay: (SeriesEpisode) -> Unit) {
+private fun EpisodeRow(
+    episode: SeriesEpisode,
+    preparing: Boolean,
+    preparingDownload: Boolean,
+    download: DownloadEntity?,
+    onPlay: (SeriesEpisode) -> Unit,
+    onToggleDownload: (SeriesEpisode) -> Unit,
+) {
     val playDescription = stringResource(R.string.series_play_episode, episode.title)
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
@@ -191,7 +243,74 @@ private fun EpisodeRow(episode: SeriesEpisode, preparing: Boolean, onPlay: (Seri
             episode.duration?.let { Text(stringResource(R.string.series_duration, it), color = MutedText, style = MaterialTheme.typography.bodySmall) }
             episode.plot?.let { Text(it, color = MutedText, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
+        DownloadIcon(download, preparingDownload, Modifier.size(40.dp)) {
+            onToggleDownload(episode)
+        }
         if (preparing) CircularProgressIndicator(Modifier.size(30.dp), color = AccentRed)
         else Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = AccentRed, modifier = Modifier.size(36.dp))
+    }
+}
+
+/** Icono de descarga del episodio según el estado de la fila `downloads`. */
+@Composable
+private fun DownloadIcon(
+    download: DownloadEntity?,
+    preparingDownload: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val description = stringResource(
+        when (download?.status) {
+            DownloadStatus.DONE -> R.string.series_episode_downloaded
+            DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING ->
+                R.string.series_episode_download_cancel
+            else -> R.string.series_episode_download
+        },
+    )
+    IconButton(onClick = onClick, modifier = modifier) {
+        when {
+            preparingDownload -> CircularProgressIndicator(
+                Modifier.size(22.dp),
+                color = AccentRed,
+                strokeWidth = 2.dp,
+            )
+            download?.status == DownloadStatus.DONE -> Icon(
+                Icons.Filled.DownloadDone,
+                contentDescription = description,
+                tint = AccentRed,
+            )
+            download?.status == DownloadStatus.FAILED -> Icon(
+                Icons.Filled.ErrorOutline,
+                contentDescription = description,
+                tint = MaterialTheme.colorScheme.error,
+            )
+            download?.status == DownloadStatus.QUEUED ||
+                download?.status == DownloadStatus.DOWNLOADING -> {
+                val pct = if (download.totalBytes > 0) {
+                    download.downloadedBytes.toFloat() / download.totalBytes
+                } else {
+                    -1f
+                }
+                if (pct >= 0f) {
+                    CircularProgressIndicator(
+                        progress = { pct },
+                        modifier = Modifier.size(22.dp),
+                        color = AccentRed,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = AccentRed,
+                        strokeWidth = 2.dp,
+                    )
+                }
+            }
+            else -> Icon(
+                Icons.Filled.Download,
+                contentDescription = description,
+                tint = MutedText,
+            )
+        }
     }
 }

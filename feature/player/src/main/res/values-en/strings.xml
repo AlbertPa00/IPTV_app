@@ -53,4 +53,9 @@
     <string name="player_sleep_off">Disable timer</string>
     <string name="player_brightness">Brightness</string>
     <string name="player_volume">Volume</string>
+    <string name="player_download">Download to watch offline</string>
+    <string name="player_downloaded">Downloaded (tap to delete)</string>
+    <string name="player_download_failed">Download failed (tap to retry)</string>
+    <string name="player_download_delete_title">Delete download?</string>
+    <string name="player_download_delete_confirm">The downloaded file will be removed from this device.</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.iptv.feature.epg.data
 
 import com.iptv.core.common.dispatchers.AppDispatchers
+import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.network.DEFAULT_USER_AGENT
 import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.ProgrammeDao
@@ -40,6 +41,7 @@ class EpgRepository @Inject constructor(
     private val client: OkHttpClient,
     private val crypto: CredentialCrypto,
     private val dispatchers: AppDispatchers,
+    private val prefs: AppPreferences,
 ) {
     /**
      * Serializa las sincronizaciones: puede haber varias a la vez (auto-sync al
@@ -121,6 +123,9 @@ class EpgRepository @Inject constructor(
                         programmeDao.purgeEndedBefore(System.currentTimeMillis() - RETENTION_MILLIS)
                         lastImportedCount = count
                         lastSyncEndAt = System.currentTimeMillis()
+                        // Persistida para el disparo por antigüedad del
+                        // arranque (la ventana en memoria no sobrevive al proceso).
+                        prefs.setEpgLastSyncAt(lastSyncEndAt)
                         emit(EpgSyncState.Done(count))
                     }
                 }

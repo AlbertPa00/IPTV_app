@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptv.core.storage.dao.ChannelDao
+import com.iptv.core.storage.dao.DownloadDao
 import com.iptv.core.storage.entity.SourceEntity
 import com.iptv.feature.source.R
 import com.iptv.feature.source.data.SourceRepository
@@ -26,6 +27,7 @@ import javax.inject.Inject
 class SourcesViewModel @Inject constructor(
     private val repository: SourceRepository,
     private val channelDao: ChannelDao,
+    private val downloadDao: DownloadDao,
 ) : ViewModel() {
 
     data class SourceRow(
@@ -33,16 +35,22 @@ class SourcesViewModel @Inject constructor(
         val channelCount: Int,
     )
 
+    /** Fuente pendiente de borrar + cuántas descargas se perderán con ella. */
+    data class PendingDelete(
+        val source: SourceEntity,
+        val downloadCount: Int,
+    )
+
     data class UiState(
         val rows: List<SourceRow> = emptyList(),
         val refreshingIds: Set<Long> = emptySet(),
-        val pendingDelete: SourceEntity? = null,
+        val pendingDelete: PendingDelete? = null,
         @StringRes val noticeRes: Int? = null,
         val noticeSections: List<Int> = emptyList(),
     )
 
     private val refreshingIds = MutableStateFlow<Set<Long>>(emptySet())
-    private val pendingDelete = MutableStateFlow<SourceEntity?>(null)
+    private val pendingDelete = MutableStateFlow<PendingDelete?>(null)
     private val notice = MutableStateFlow<Pair<Int, List<Int>>?>(null)
 
     val uiState: StateFlow<UiState> = combine(
@@ -103,7 +111,12 @@ class SourcesViewModel @Inject constructor(
     }
 
     fun requestDelete(source: SourceEntity) {
-        pendingDelete.value = source
+        // El borrado elimina en cascada las descargas de la fuente: el
+        // diálogo las cuenta para que el usuario lo sepa antes de confirmar.
+        viewModelScope.launch {
+            pendingDelete.value =
+                PendingDelete(source, downloadDao.bySource(source.id).size)
+        }
     }
 
     fun dismissDelete() {
@@ -113,7 +126,7 @@ class SourcesViewModel @Inject constructor(
     fun confirmDelete() {
         val target = pendingDelete.value ?: return
         pendingDelete.value = null
-        viewModelScope.launch { repository.deleteSource(target.id) }
+        viewModelScope.launch { repository.deleteSource(target.source.id) }
     }
 }
 

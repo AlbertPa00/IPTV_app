@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -72,6 +73,31 @@ class GuideViewModel @Inject constructor(
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // Orígenes para los que ya se disparó la descarga automática: una vez por
+    // fuente y sesión (un fallo no debe reintentar en bucle al recomponer).
+    private val autoSyncedSources = mutableSetOf<Long>()
+
+    init {
+        // Si la guía está vacía al entrar en la pestaña (o tras abrir la app
+        // sin datos EPG), la descarga arranca sola en segundo plano — el
+        // usuario no debería tener que pulsar "Sincronizar" a mano.
+        viewModelScope.launch {
+            sourceDao.observeActive()
+                .flatMapLatest { source ->
+                    if (source == null) {
+                        flowOf(null)
+                    } else {
+                        programmeDao.observeHasProgrammes(source.id)
+                            .map { source.id to it }
+                    }
+                }
+                .collect { pair ->
+                    val (sourceId, has) = pair ?: return@collect
+                    if (!has && autoSyncedSources.add(sourceId)) sync()
+                }
+        }
+    }
 
     /**
      * Recalcula sólo cuando la guía puede cambiar: al llegar el borde de un

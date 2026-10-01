@@ -4,6 +4,7 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.iptv.core.storage.dao.CategoryDao
 import com.iptv.core.storage.dao.ChannelDao
+import com.iptv.core.storage.dao.DownloadDao
 import com.iptv.core.storage.dao.PlaybackHistoryDao
 import com.iptv.core.storage.dao.ProgrammeDao
 import com.iptv.core.storage.dao.SourceDao
@@ -12,6 +13,7 @@ import com.iptv.core.storage.entity.CategoryStagingEntity
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.ChannelFtsEntity
 import com.iptv.core.storage.entity.ChannelStagingEntity
+import com.iptv.core.storage.entity.DownloadEntity
 import com.iptv.core.storage.entity.PlaybackHistoryEntity
 import com.iptv.core.storage.entity.ProgrammeEntity
 import com.iptv.core.storage.entity.SourceEntity
@@ -26,8 +28,9 @@ import com.iptv.core.storage.entity.SourceEntity
         ChannelStagingEntity::class,
         CategoryStagingEntity::class,
         ChannelFtsEntity::class,
+        DownloadEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -36,4 +39,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun channelDao(): ChannelDao
     abstract fun programmeDao(): ProgrammeDao
     abstract fun playbackHistoryDao(): PlaybackHistoryDao
+    abstract fun downloadDao(): DownloadDao
 }

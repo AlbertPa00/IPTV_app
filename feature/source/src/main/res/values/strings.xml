@@ -60,6 +60,7 @@
     <string name="sources_delete">Eliminar</string>
     <string name="sources_delete_title">¿Eliminar fuente?</string>
     <string name="sources_delete_confirm">Se eliminarán «%1$s» y todos sus canales. Esta acción no se puede deshacer.</string>
+    <string name="sources_delete_confirm_downloads">También se borrarán sus %1$d descargas y sus ficheros.</string>
     <string name="sources_delete_yes">Eliminar</string>
     <string name="sources_delete_no">Cancelar</string>
     <string name="sources_last_sync">Última actualización: %1$s</string>
@@ -108,4 +109,20 @@
     <string name="sources_refresh_failed">No se pudo actualizar la fuente.</string>
     <string name="source_sync_partial">La fuente se añadió, pero no se pudieron descargar %1$s: el servidor no respondió. Podrás reintentarlo desde Ajustes → Actualizar.</string>
     <string name="source_continue">Continuar</string>
+    <string name="settings_downloads_wifi_only">Descargas sólo con Wi-Fi</string>
+    <string name="settings_downloads_wifi_only_sub">No descargar películas ni episodios usando datos móviles</string>
+    <string name="settings_downloads_title">Descargas</string>
+    <string name="settings_downloads_manage">Gestionar descargas</string>
+    <string name="settings_downloads_storage_sub">%1$d elementos · %2$s usados · %3$s libres</string>
+    <string name="settings_downloads_empty">No hay descargas</string>
+    <string name="settings_downloads_delete_all">Borrar todo</string>
+    <string name="settings_downloads_delete_all_title">¿Borrar todas las descargas?</string>
+    <string name="settings_downloads_delete_all_confirm">Se borrarán %1$d descargas (%2$s) y sus ficheros. Esta acción no se puede deshacer.</string>
+    <string name="settings_downloads_delete_title">¿Eliminar descarga?</string>
+    <string name="settings_downloads_delete_confirm">Se eliminará «%1$s» de las descargas y se borrará el fichero descargado.</string>
+    <string name="settings_download_state_done">Descargada · %1$s</string>
+    <string name="settings_download_state_queued">En cola…</string>
+    <string name="settings_download_state_downloading">Descargando · %1$s</string>
+    <string name="settings_download_state_failed">Error al descargar</string>
+    <string name="settings_close">Cerrar</string>
 </resources>

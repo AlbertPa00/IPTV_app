@@ -20,6 +20,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -64,6 +66,24 @@ class LiveTvViewModel @Inject constructor(
     private val _filters = MutableStateFlow(Filters())
     val filters: StateFlow<Filters> = _filters.asStateFlow()
 
+    // Recarga local (pull-to-refresh): el tick re-suscribe las consultas de
+    // categorías y guía; la lista de canales la revalida la pantalla con
+    // LazyPagingItems.refresh(). El indicador tiene un suelo mínimo para que
+    // el gesto se perciba aunque Room responda al instante.
+    private val refreshTick = MutableStateFlow(0)
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    fun refresh() {
+        if (_isRefreshing.value) return
+        _isRefreshing.value = true
+        refreshTick.update { it + 1 }
+        viewModelScope.launch {
+            delay(MIN_REFRESH_DWELL_MS)
+            _isRefreshing.value = false
+        }
+    }
+
     /** Pista única de primer uso ("toca un canal"): visible hasta que se marca vista. */
     val showQuickHint: StateFlow<Boolean> = appPreferences.liveHintSeen
         .map { seen -> !seen }
@@ -78,7 +98,7 @@ class LiveTvViewModel @Inject constructor(
     private val activeSource: StateFlow<SourceEntity?> = sourceDao.observeActive()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), null)
 
-    val categories: StateFlow<List<CategoryEntity>> = activeSource
+    val categories: StateFlow<List<CategoryEntity>> = combine(activeSource, refreshTick) { s, _ -> s }
         .flatMapLatest { source ->
             if (source == null) flowOf(emptyList())
             else categoryDao.observeBySource(source.id, ContentKind.TV.storageValue)
@@ -97,7 +117,7 @@ class LiveTvViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyList())
 
     /** EPG por canal para pintar "ahora / a continuación" sin consultas por fila. */
-    val guideByChannel: StateFlow<Map<Long, GuideRow>> = activeSource
+    val guideByChannel: StateFlow<Map<Long, GuideRow>> = combine(activeSource, refreshTick) { s, _ -> s }
         .flatMapLatest { source ->
             if (source == null) {
                 flowOf(emptyMap())
@@ -142,6 +162,58 @@ class LiveTvViewModel @Inject constructor(
         .distinctUntilChanged()
         .debounce { if (it.isBlank()) 0L else 300L }
 
+    /**
+     * Un Pager por (origen, filtros): cachedIn conserva las páginas cargadas
+     * y las re-emite a un nuevo coleccionista — volver del reproductor o de
+     * una ficha repite el snapshot al instante en lugar de paginar de nuevo.
+     */
+    private data class PagingKey(val sourceId: Long, val filters: Filters)
+
+    private val pagingFlows = LinkedHashMap<PagingKey, Flow<PagingData<ChannelEntity>>>()
+
+    private fun pagingFlow(key: PagingKey): Flow<PagingData<ChannelEntity>> {
+        while (pagingFlows.size >= MAX_PAGING_CACHE) {
+            pagingFlows.remove(pagingFlows.keys.first())
+        }
+        return pagingFlows.getOrPut(key) {
+            val filters = key.filters
+            Pager(PagingConfig(pageSize = 60, initialLoadSize = 120)) {
+                when {
+                    filters.query.isNotBlank() -> {
+                        val match = filters.query.toFtsMatch()
+                        if (match.isBlank()) {
+                            channelDao.pagingBySearch(
+                                key.sourceId,
+                                ContentKind.TV.storageValue,
+                                filters.query.toLikePattern(),
+                            )
+                        } else {
+                            channelDao.pagingByFts(
+                                key.sourceId,
+                                ContentKind.TV.storageValue,
+                                match,
+                            )
+                        }
+                    }
+                    filters.favoritesOnly -> channelDao.pagingFavorites(
+                        key.sourceId,
+                        ContentKind.TV.storageValue,
+                    )
+                    filters.categoryId != null -> channelDao.pagingByCategory(
+                        key.sourceId,
+                        filters.categoryId,
+                    )
+                    filters.language != null -> channelDao.pagingByLanguage(
+                        key.sourceId,
+                        ContentKind.TV.storageValue,
+                        filters.language,
+                    )
+                    else -> channelDao.pagingBySource(key.sourceId, ContentKind.TV.storageValue)
+                }
+            }.flow.cachedIn(viewModelScope)
+        }
+    }
+
     val channels: Flow<PagingData<ChannelEntity>> = combine(
         activeSource,
         _filters,
@@ -149,43 +221,13 @@ class LiveTvViewModel @Inject constructor(
     ) { source, filters, query -> source to filters.copy(query = query) }
         .distinctUntilChanged()
         .flatMapLatest { (source, filters) ->
+            // El null inicial del origen es "aún cargando": no emitir nada
+            // mantiene loadState.refresh=Loading y la pantalla muestra el
+            // indicador en lugar de un vacío transitorio.
             if (source == null) {
-                flowOf(PagingData.empty())
+                emptyFlow()
             } else {
-                Pager(PagingConfig(pageSize = 60, initialLoadSize = 120)) {
-                    when {
-                        filters.query.isNotBlank() -> {
-                            val match = filters.query.toFtsMatch()
-                            if (match.isBlank()) {
-                                channelDao.pagingBySearch(
-                                    source.id,
-                                    ContentKind.TV.storageValue,
-                                    filters.query.toLikePattern(),
-                                )
-                            } else {
-                                channelDao.pagingByFts(
-                                    source.id,
-                                    ContentKind.TV.storageValue,
-                                    match,
-                                )
-                            }
-                        }
-                        filters.favoritesOnly -> channelDao.pagingFavorites(
-                            source.id,
-                            ContentKind.TV.storageValue,
-                        )
-                        filters.categoryId != null -> channelDao.pagingByCategory(
-                            source.id,
-                            filters.categoryId,
-                        )
-                        filters.language != null -> channelDao.pagingByLanguage(
-                            source.id,
-                            ContentKind.TV.storageValue,
-                            filters.language,
-                        )
-                        else -> channelDao.pagingBySource(source.id, ContentKind.TV.storageValue)
-                    }
-                }.flow.cachedIn(viewModelScope)
+                pagingFlow(PagingKey(source.id, filters))
             }
         }
 
@@ -219,5 +261,7 @@ class LiveTvViewModel @Inject constructor(
         /** Sueño mínimo entre recálculos y techo cuando no hay borde próximo. */
         const val MIN_TICK_MS = 1_000L
         const val MAX_TICK_MS = 10 * 60_000L
+        const val MIN_REFRESH_DWELL_MS = 600L
+        const val MAX_PAGING_CACHE = 12
     }
 }

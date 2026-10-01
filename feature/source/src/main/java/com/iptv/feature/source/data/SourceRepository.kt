@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.room.withTransaction
 import com.iptv.core.common.dispatchers.AppDispatchers
+import com.iptv.core.common.download.DownloadController
 import com.iptv.core.common.text.LanguageTag
 import com.iptv.core.common.text.TextNormalizer
 import com.iptv.core.network.DEFAULT_USER_AGENT
@@ -45,6 +46,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerializationException
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
@@ -61,6 +64,7 @@ import java.nio.charset.StandardCharsets
 import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -80,8 +84,15 @@ class SourceRepository @Inject constructor(
     private val httpClient: OkHttpClient,
     private val xtreamClient: XtreamClient,
     private val credentialCrypto: CredentialCrypto,
+    private val downloadController: DownloadController,
     private val dispatchers: AppDispatchers,
 ) {
+
+    // El staging y el merge no son atómicos entre sí: si dos syncs (worker
+    // periódico y un refresco manual, por ejemplo) se solapan, una borra el
+    // volcado de la otra y su merge eliminaría filas como "ausentes". El
+    // candado serializa cualquier importación de catálogo por fuente.
+    private val syncMutex = Mutex()
 
     fun observeSources(): Flow<List<SourceEntity>> = sourceDao.observeAll()
 
@@ -267,6 +278,9 @@ class SourceRepository @Inject constructor(
 
     suspend fun deleteSource(id: Long) {
         val source = sourceDao.findById(id)
+        // Fuera de la transacción: cancela trabajos, borra ficheros y filas
+        // de `downloads` antes de que desaparezca su canal ancla.
+        downloadController.removeForSource(id)
         database.withTransaction {
             channelDao.deleteBySource(id)
             categoryDao.deleteBySource(id)
@@ -283,101 +297,125 @@ class SourceRepository @Inject constructor(
     }
 
     private fun syncXtreamCatalog(sourceId: Long, server: ParsedServer, username: String, password: String): Flow<SourceSyncPhase> = flow {
+        syncMutex.withLock {
         emit(SourceSyncPhase.Progress(SyncStep.FETCHING, 0))
-        // Las 6 peticiones son independientes: en paralelo el alta de una cuenta
-        // grande tarda lo que tarda la respuesta más lenta, no la suma de todas.
-        // Los catálogos opcionales (VOD/series) devuelven null si fallan tras
-        // reintentar, para informar al usuario en lugar de ocultarlos.
-        val catalog = coroutineScope {
+        // Las colecciones de streams se vuelcan a staging por lotes a medida
+        // que el cliente las parsea: materializar las tres completas en
+        // memoria provocaba OOM con catálogos grandes. Las seis peticiones
+        // siguen en paralelo (tarda lo que tarda la respuesta más lenta).
+        channelDao.clearStaging(sourceId)
+        val missing = ConcurrentHashMap.newKeySet<String>()
+        val (categories, stagedCount) = coroutineScope {
             val liveCategories = async {
                 xtreamClient.liveCategories(server.scheme, server.host, server.port, username, password)
-            }
-            val liveStreams = async {
-                xtreamClient.liveStreams(server.scheme, server.host, server.port, username, password)
             }
             val vodCategories = async {
                 optionalCatalog("vod_categories") { xtreamClient.vodCategories(server.scheme, server.host, server.port, username, password) }
             }
-            val vodStreams = async {
-                optionalCatalog("vod_streams") { xtreamClient.vodStreams(server.scheme, server.host, server.port, username, password) }
-            }
             val seriesCategories = async {
                 optionalCatalog("series_categories") { xtreamClient.seriesCategories(server.scheme, server.host, server.port, username, password) }
             }
-            val series = async {
-                optionalCatalog("series") { xtreamClient.series(server.scheme, server.host, server.port, username, password) }
+            val categoriesDeferred = async {
+                val vodCats = vodCategories.await().also { if (it == null) missing += SECTION_VOD }
+                val seriesCats = seriesCategories.await().also { if (it == null) missing += SECTION_SERIES }
+                buildList {
+                    addAll(liveCategories.await().toEntities(sourceId, Kinds.LIVE))
+                    addAll(vodCats.orEmpty().toEntities(sourceId, Kinds.VOD))
+                    addAll(seriesCats.orEmpty().toEntities(sourceId, Kinds.SERIES))
+                }
             }
-            XtreamCatalog(
-                liveCategories = liveCategories.await(),
-                liveStreams = liveStreams.await(),
-                vodCategories = vodCategories.await(),
-                vodStreams = vodStreams.await(),
-                seriesCategories = seriesCategories.await(),
-                series = series.await(),
-            )
-        }
-        val missing = buildSet {
-            if (catalog.vodCategories == null || catalog.vodStreams == null) add(SECTION_VOD)
-            if (catalog.seriesCategories == null || catalog.series == null) add(SECTION_SERIES)
-        }
-        emit(SourceSyncPhase.Progress(
-            SyncStep.FETCHING,
-            catalog.liveStreams.size + catalog.vodStreams.orEmpty().size + catalog.series.orEmpty().size,
-        ))
+            // Cada canal hereda el idioma de su categoría (prefijo "ES -",
+            // "AR|"…): el mapa llega como Deferred para no bloquear el parseo
+            // mientras se resuelven las categorías (peticiones pequeñas).
+            val langByGroup = async { categoriesDeferred.await().associate { it.externalId to it.language } }
 
-        val categories = buildList {
-            addAll(catalog.liveCategories.toEntities(sourceId, Kinds.LIVE))
-            addAll(catalog.vodCategories.orEmpty().toEntities(sourceId, Kinds.VOD))
-            addAll(catalog.seriesCategories.orEmpty().toEntities(sourceId, Kinds.SERIES))
+            val live = async {
+                stageSection(sourceId, Kinds.LIVE, SECTION_LIVE, optional = false, missing,
+                    fetch = { xtreamClient.liveStreams(server.scheme, server.host, server.port, username, password, it) },
+                ) { it.toLiveEntity(sourceId, server, username, password).withLanguage(langByGroup.await()) }
+            }
+            val vod = async {
+                stageSection(sourceId, Kinds.VOD, SECTION_VOD, optional = true, missing,
+                    fetch = { xtreamClient.vodStreams(server.scheme, server.host, server.port, username, password, it) },
+                ) { it.toVodEntity(sourceId, server, username, password).withLanguage(langByGroup.await()) }
+            }
+            val series = async {
+                stageSection(sourceId, Kinds.SERIES, SECTION_SERIES, optional = true, missing,
+                    fetch = { xtreamClient.series(server.scheme, server.host, server.port, username, password, it) },
+                ) { it.toSeriesEntity(sourceId).withLanguage(langByGroup.await()) }
+            }
+            categoriesDeferred.await() to (live.await() + vod.await() + series.await())
         }
-        // Cada canal hereda el idioma de su categoría (prefijo "ES -", "AR|"…);
-        // sin categoría se intenta detectar por el propio nombre.
-        val langByGroup = categories.associate { it.externalId to it.language }
-        // Las entidades se vuelcan a staging por lotes: no se materializa la
-        // lista completa de canales en memoria durante la importación.
-        channelDao.clearStaging(sourceId)
-        stageChannels(
-            sequence {
-                catalog.liveStreams.forEach {
-                    yield(it.toLiveEntity(sourceId, server, username, password).withLanguage(langByGroup))
-                }
-                catalog.vodStreams.orEmpty().forEach {
-                    yield(it.toVodEntity(sourceId, server, username, password).withLanguage(langByGroup))
-                }
-                catalog.series.orEmpty().forEach {
-                    yield(it.toSeriesEntity(sourceId).withLanguage(langByGroup))
-                }
-            },
-        )
+
+        emit(SourceSyncPhase.Progress(SyncStep.IMPORTING, stagedCount))
         // Las secciones que el servidor no devolvió conservan sus filas
         // anteriores: un fallo transitorio no debe borrar contenido ya importado.
-        val keptKinds = missing.map { if (it == SECTION_VOD) Kinds.VOD else Kinds.SERIES }.toSet()
+        // Las secciones no entregadas (fallo o respuesta vacía) conservan
+        // sus filas anteriores: un fallo transitorio no borra contenido ya
+        // importado. El mapa es explícito: cualquier sección puede faltar.
+        val keptKinds = missing.mapNotNull { section ->
+            when (section) {
+                SECTION_LIVE -> Kinds.LIVE
+                SECTION_VOD -> Kinds.VOD
+                SECTION_SERIES -> Kinds.SERIES
+                else -> null
+            }
+        }.toSet()
         replaceCatalog(sourceId, categories, userAgent = null, keepKinds = keptKinds)
         ensureActiveSource(sourceId)
         emit(SourceSyncPhase.Done(sourceId, missing))
+        }
     }.flowOn(dispatchers.io)
 
-    /** Inserta entidades en `channels_staging` por lotes de [BATCH_SIZE]. */
-    private suspend fun stageChannels(channels: Sequence<ChannelEntity>) {
-        val batch = ArrayList<ChannelStagingEntity>(BATCH_SIZE)
-        for (entity in channels) {
-            batch += entity.toStaging()
-            if (batch.size == BATCH_SIZE) {
-                channelDao.insertStaging(batch)
-                batch.clear()
+    /**
+     * Vuelca una colección Xtream en `channels_staging` lote a lote conforme
+     * el cliente la entrega. Si una sección opcional falla a mitad del
+     * recorrido se descartan sus filas parciales y, tras un reintento, se
+     * marca en [missing] para conservar las filas anteriores (mismo contrato
+     * que [optionalCatalog]). Una respuesta OK pero sin elementos también se
+     * marca: un `[]` transitorio no debe borrar un catálogo ya importado.
+     * Devuelve cuántas filas quedaron staged.
+     */
+    private suspend fun <T> stageSection(
+        sourceId: Long,
+        kind: String,
+        section: String,
+        optional: Boolean,
+        missing: MutableSet<String>,
+        fetch: suspend (suspend (List<T>) -> Unit) -> Unit,
+        toEntity: suspend (T) -> ChannelEntity,
+    ): Int {
+        repeat(2) { attempt ->
+            // Contador por intento: si el primero vuelca parcial y el segundo
+            // llega vacío, un acumulado global ocultaría el resultado real.
+            var staged = 0
+            try {
+                fetch { batch ->
+                    val rows = ArrayList<ChannelStagingEntity>(batch.size)
+                    for (item in batch) rows += toEntity(item).toStaging()
+                    channelDao.insertStaging(rows)
+                    staged += batch.size
+                }
+                if (staged == 0) missing += section
+                return staged
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!optional) throw e
+                // Rollback de la sección: sin limpiar, un reintento mezclaría
+                // filas parciales o el merge conservaría un catálogo truncado.
+                channelDao.clearStagingByKind(sourceId, kind)
+                if (attempt == 0) {
+                    Log.w(TAG, "Catálogo $section falló, reintentando", e)
+                    delay(1_500)
+                } else {
+                    Log.w(TAG, "Catálogo opcional Xtream no disponible: $section", e)
+                    missing += section
+                }
             }
         }
-        if (batch.isNotEmpty()) channelDao.insertStaging(batch)
+        return 0
     }
-
-    private data class XtreamCatalog(
-        val liveCategories: List<XtCategory>,
-        val liveStreams: List<XtStream>,
-        val vodCategories: List<XtCategory>?,
-        val vodStreams: List<XtStream>?,
-        val seriesCategories: List<XtCategory>?,
-        val series: List<XtSeries>?,
-    )
 
     /**
      * VOD/series son opcionales en Xtream: un fallo devuelve null (tras un
@@ -481,7 +519,7 @@ class SourceRepository @Inject constructor(
         sourceId: Long,
         reader: BufferedReader,
         onProgress: suspend (Int) -> Unit,
-    ) {
+    ) = syncMutex.withLock {
         val categories = linkedMapOf<String, CategoryEntity>()
         var userAgent: String? = null
         var epgUrl: String? = null
@@ -785,6 +823,7 @@ class SourceRepository @Inject constructor(
     private companion object {
         const val TAG = "SourceRepository"
         const val BATCH_SIZE = 500
+        const val SECTION_LIVE = "live"
         const val SECTION_VOD = "vod"
         const val SECTION_SERIES = "series"
         const val CHARSET_SAMPLE_SIZE = 64 * 1024

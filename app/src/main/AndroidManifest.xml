@@ -9,6 +9,11 @@
     <uses-permission
         android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation" />
+    <!-- Progreso de descargas y control de Cast en el área de notificaciones. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- DownloadWorker corre en primer plano (WorkManager SystemForegroundService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <!-- Pantalla táctil opcional (boxes, proyectores con ratón). La UI no
          implementa navegación por D-pad: sin declaración leanback ni
@@ -57,6 +62,13 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+
+        <!-- DownloadWorker corre en primer plano vía WorkManager: el tipo
+             dataSync debe estar declarado en el manifiesto de la app. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
         <activity
             android:name=".MainActivity"

@@ -138,3 +138,39 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
         db.execSQL("INSERT INTO `channels_fts`(`channels_fts`) VALUES('rebuild')")
     }
 }
+
+/**
+ * Descargas locales de películas/episodios para ver sin conexión. La fila
+ * guarda todo lo necesario para reintentar (URL remota y cabeceras ya
+ * resueltas) y `channelId` ancla el item a su entrada del catálogo.
+ */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `downloads` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `channelId` INTEGER NOT NULL,
+                `sourceId` INTEGER NOT NULL,
+                `externalId` TEXT NOT NULL,
+                `section` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `imageUrl` TEXT,
+                `remoteUrl` TEXT NOT NULL,
+                `userAgent` TEXT,
+                `referrer` TEXT,
+                `localPath` TEXT,
+                `totalBytes` INTEGER NOT NULL,
+                `downloadedBytes` INTEGER NOT NULL,
+                `status` TEXT NOT NULL,
+                `errorDetail` TEXT,
+                `createdAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_downloads_channelId` ON `downloads` (`channelId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_downloads_sourceId` ON `downloads` (`sourceId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_downloads_section` ON `downloads` (`section`)")
+    }
+}

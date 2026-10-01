@@ -3,15 +3,22 @@ package com.iptv.feature.catalog.ui
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.iptv.core.common.download.DownloadController
 import com.iptv.core.storage.dao.ChannelDao
+import com.iptv.core.storage.dao.DownloadDao
 import com.iptv.core.storage.dao.PlaybackHistoryDao
 import com.iptv.core.storage.entity.ChannelEntity
+import com.iptv.core.storage.entity.DownloadEntity
+import com.iptv.core.storage.entity.DownloadSections
+import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.feature.catalog.data.VodInfo
 import com.iptv.feature.catalog.data.VodInfoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -21,6 +28,8 @@ class MovieDetailsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val channelDao: ChannelDao,
     private val playbackHistoryDao: PlaybackHistoryDao,
+    private val downloadDao: DownloadDao,
+    private val downloadController: DownloadController,
     private val vodInfoRepository: VodInfoRepository,
 ) : ViewModel() {
 
@@ -38,6 +47,34 @@ class MovieDetailsViewModel @Inject constructor(
     private val channelId = checkNotNull(savedStateHandle.get<Long>("channelId"))
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    /** Descarga asociada a esta película; null = no descargada. */
+    val download: StateFlow<DownloadEntity?> = downloadDao.observeByChannel(channelId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * Botón de descarga de la ficha: sin descarga la encola, en curso la
+     * cancela y fallida reintenta. Cuando está completada la pantalla pide
+     * confirmación y llama a [deleteDownload].
+     */
+    fun toggleDownload() {
+        val channel = _uiState.value.channel ?: return
+        viewModelScope.launch {
+            when (download.value?.status) {
+                null, DownloadStatus.FAILED ->
+                    downloadController.enqueue(channel.id, DownloadSections.MOVIE)
+                DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING ->
+                    downloadController.cancel(channel.id)
+                else -> Unit
+            }
+        }
+    }
+
+    /** Borra la descarga y su fichero; sólo tras la confirmación de la UI. */
+    fun deleteDownload() {
+        val id = download.value?.id ?: return
+        viewModelScope.launch { downloadController.delete(id) }
+    }
 
     init { load() }
 

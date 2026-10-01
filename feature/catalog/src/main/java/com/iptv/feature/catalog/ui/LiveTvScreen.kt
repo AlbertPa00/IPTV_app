@@ -25,12 +25,14 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,9 +71,11 @@ import kotlinx.coroutines.delay
  * siguiente por canal. La EPG se resuelve una vez por minuto en el ViewModel
  * y se consulta por `channelId` al componer cada fila.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveTvScreen(
     onChannelClick: (Long) -> Unit,
+    onContentReady: () -> Unit = {},
     viewModel: LiveTvViewModel = hiltViewModel(),
 ) {
     val filters by viewModel.filters.collectAsStateWithLifecycle()
@@ -79,8 +83,24 @@ fun LiveTvScreen(
     val languages by viewModel.languages.collectAsStateWithLifecycle()
     val guideByChannel by viewModel.guideByChannel.collectAsStateWithLifecycle()
     val showQuickHint by viewModel.showQuickHint.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val content = viewModel.channels.collectAsLazyPagingItems()
     var showLanguagePicker by remember { mutableStateOf(false) }
+    // El pull-to-refresh también revalida el PagingSource: el indicador se
+    // sostiene mientras dure ese refresh además del suelo del ViewModel.
+    var pulledRefresh by remember { mutableStateOf(false) }
+    var contentReadyNotified by remember { mutableStateOf(false) }
+    LaunchedEffect(content.loadState.refresh) {
+        if (content.loadState.refresh !is LoadState.Loading) {
+            pulledRefresh = false
+            // Primera carga resuelta (con datos, vacía o con error): la app
+            // precarga Películas/Series en segundo plano.
+            if (!contentReadyNotified) {
+                contentReadyNotified = true
+                onContentReady()
+            }
+        }
+    }
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
             delay(30_000)
@@ -119,11 +139,28 @@ fun LiveTvScreen(
                 onDismiss = { showLanguagePicker = false },
             )
         }
-        Box(Modifier.weight(1f)) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing ||
+                (pulledRefresh && content.loadState.refresh is LoadState.Loading),
+            onRefresh = {
+                pulledRefresh = true
+                viewModel.refresh()
+                content.refresh()
+            },
+            modifier = Modifier.weight(1f),
+        ) {
             when {
                 content.loadState.refresh is LoadState.Loading && content.itemCount == 0 ->
                     LoadingState()
-                content.itemCount == 0 -> EmptyState(liveEmptyMessage(filters))
+                content.itemCount == 0 -> LazyColumn(Modifier.fillMaxSize()) {
+                    // Scrollable para que el pull-to-refresh funcione también aquí.
+                    item {
+                        EmptyState(
+                            text = liveEmptyMessage(filters),
+                            modifier = Modifier.fillParentMaxSize(),
+                        )
+                    }
+                }
                 else -> ChannelList(content, guideByChannel, now, onChannelClick, viewModel::toggleFavorite)
             }
             if (showQuickHint && content.itemCount > 0) {

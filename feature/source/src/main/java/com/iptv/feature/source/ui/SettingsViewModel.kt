@@ -1,14 +1,23 @@
 package com.iptv.feature.source.ui
 
+import android.content.Context
+import android.os.StatFs
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.iptv.core.common.download.DownloadController
 import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.common.sync.CatalogSyncScheduler
 import com.iptv.core.storage.dao.CategoryDao
+import com.iptv.core.storage.dao.DownloadDao
 import com.iptv.core.storage.dao.SourceDao
 import com.iptv.core.storage.entity.CategoryEntity
+import com.iptv.core.storage.entity.DownloadEntity
+import com.iptv.core.storage.entity.DownloadStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,6 +26,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -31,10 +42,13 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val prefs: AppPreferences,
     private val scheduler: CatalogSyncScheduler,
     sourceDao: SourceDao,
     private val categoryDao: CategoryDao,
+    private val downloadDao: DownloadDao,
+    private val downloadController: DownloadController,
 ) : ViewModel() {
 
     /** Diálogo de PIN pendiente; el propósito decide qué pasa al acertar. */
@@ -43,6 +57,7 @@ class SettingsViewModel @Inject constructor(
     data class UiState(
         val autoRefresh: Boolean = true,
         val wifiOnly: Boolean = true,
+        val downloadsWifiOnly: Boolean = true,
         val crashReporting: Boolean = false,
         val parentalEnabled: Boolean = false,
         val categories: List<CategoryEntity> = emptyList(),
@@ -68,22 +83,32 @@ class SettingsViewModel @Inject constructor(
     private val activeSource = sourceDao.observeActive()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), null)
 
+    private data class SyncPrefs(
+        val autoRefresh: Boolean,
+        val wifiOnly: Boolean,
+        val crashReporting: Boolean,
+        val downloadsWifiOnly: Boolean,
+    )
+
     private val syncPrefs = combine(
         prefs.autoRefreshEnabled,
         prefs.autoRefreshWifiOnly,
         prefs.crashReportingEnabled,
-    ) { autoRefresh, wifiOnly, crashReporting -> Triple(autoRefresh, wifiOnly, crashReporting) }
+        prefs.downloadsWifiOnly,
+        ::SyncPrefs,
+    )
 
     val uiState: StateFlow<UiState> = combine(
         syncPrefs,
         prefs.hasPin,
         categories,
         combine(pinPrompt, pinError, managingCategories) { p, e, m -> Triple(p, e, m) },
-    ) { (autoRefresh, wifiOnly, crashReporting), hasPin, cats, (prompt, error, managing) ->
+    ) { sync, hasPin, cats, (prompt, error, managing) ->
         UiState(
-            autoRefresh = autoRefresh,
-            wifiOnly = wifiOnly,
-            crashReporting = crashReporting,
+            autoRefresh = sync.autoRefresh,
+            wifiOnly = sync.wifiOnly,
+            downloadsWifiOnly = sync.downloadsWifiOnly,
+            crashReporting = sync.crashReporting,
             parentalEnabled = hasPin,
             categories = cats,
             pinPrompt = prompt,
@@ -91,6 +116,80 @@ class SettingsViewModel @Inject constructor(
             managingCategories = managing,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), UiState())
+
+    // -- Descargas -----------------------------------------------------------
+
+    /** Estado de la sección Descargas de Ajustes: lista, tamaños y confirmaciones. */
+    data class DownloadsUi(
+        val items: List<DownloadEntity> = emptyList(),
+        val usedBytes: Long = 0,
+        val freeBytes: Long = 0,
+        val pendingDelete: DownloadEntity? = null,
+        val confirmDeleteAll: Boolean = false,
+    )
+
+    private val pendingDownloadDelete = MutableStateFlow<DownloadEntity?>(null)
+    private val pendingDeleteAllDownloads = MutableStateFlow(false)
+
+    // Los tamaños se leen de disco: fichero real si la descarga terminó,
+    // bytes del parcial si sigue en curso. StatFs da el espacio libre del
+    // volumen donde vive filesDir (hoy, almacenamiento interno).
+    private val downloadsWithStats = downloadDao.observeAll()
+        .map { list ->
+            val used = list.sumOf { download ->
+                when {
+                    download.status == DownloadStatus.DONE ->
+                        download.localPath
+                            ?.let { File(it).length().takeIf { size -> size > 0 } }
+                            ?: download.totalBytes
+
+                    else -> download.downloadedBytes
+                }
+            }
+            Triple(list, used, StatFs(context.filesDir.path).availableBytes)
+        }
+        .flowOn(Dispatchers.IO)
+
+    val downloadsUi: StateFlow<DownloadsUi> = combine(
+        downloadsWithStats,
+        pendingDownloadDelete,
+        pendingDeleteAllDownloads,
+    ) { (items, used, free), pending, deleteAll ->
+        DownloadsUi(
+            items = items,
+            usedBytes = used,
+            freeBytes = free,
+            pendingDelete = pending,
+            confirmDeleteAll = deleteAll,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), DownloadsUi())
+
+    fun requestDownloadDelete(download: DownloadEntity) {
+        pendingDownloadDelete.value = download
+    }
+
+    fun dismissDownloadDelete() {
+        pendingDownloadDelete.value = null
+    }
+
+    fun confirmDownloadDelete() {
+        val target = pendingDownloadDelete.value ?: return
+        pendingDownloadDelete.value = null
+        viewModelScope.launch { downloadController.delete(target.id) }
+    }
+
+    fun requestDeleteAllDownloads() {
+        if (downloadsUi.value.items.isNotEmpty()) pendingDeleteAllDownloads.value = true
+    }
+
+    fun dismissDeleteAllDownloads() {
+        pendingDeleteAllDownloads.value = false
+    }
+
+    fun confirmDeleteAllDownloads() {
+        pendingDeleteAllDownloads.value = false
+        viewModelScope.launch { downloadController.removeAll() }
+    }
 
     fun setAutoRefresh(enabled: Boolean) {
         viewModelScope.launch {
@@ -104,6 +203,11 @@ class SettingsViewModel @Inject constructor(
             prefs.setAutoRefreshWifiOnly(wifiOnly)
             scheduler.apply(prefs.isAutoRefreshEnabled(), wifiOnly)
         }
+    }
+
+    /** Las descargas de vídeo pesan GBs: por defecto sólo con Wi-Fi. */
+    fun setDownloadsWifiOnly(wifiOnly: Boolean) {
+        prefs.setDownloadsWifiOnly(wifiOnly)
     }
 
     fun setCrashReporting(enabled: Boolean) {

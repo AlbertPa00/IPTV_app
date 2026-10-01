@@ -47,6 +47,9 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
@@ -102,6 +105,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -118,9 +122,12 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import com.iptv.core.designsystem.components.ConfirmDeleteDialog
 import com.iptv.core.designsystem.components.IptvAsyncImage
 import com.iptv.core.designsystem.components.LoadingState
 import com.iptv.core.storage.entity.ChannelEntity
+import com.iptv.core.storage.entity.DownloadEntity
+import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.feature.player.R
 import com.iptv.feature.player.cast.CastRouteButton
 import kotlinx.coroutines.Job
@@ -170,6 +177,8 @@ fun PlayerScreen(
     val isInPipMode by viewModel.isInPipMode.collectAsStateWithLifecycle()
     val castVolume by viewModel.castVolume.collectAsStateWithLifecycle()
     val castMuted by viewModel.castMuted.collectAsStateWithLifecycle()
+    val download by viewModel.download.collectAsStateWithLifecycle()
+    var pendingDelete by remember { mutableStateOf<DownloadEntity?>(null) }
     var tracksDialogVisible by remember { mutableStateOf(false) }
     var tracksTick by remember { mutableStateOf(0) }
     var resizeMode by remember { mutableStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
@@ -688,6 +697,25 @@ fun PlayerScreen(
                                 )
                             }
                             Spacer(Modifier.width(4.dp))
+                            // Descargar para ver sin conexión (sólo VOD).
+                            if (!state.isLive) {
+                                IconButton(
+                                    onClick = {
+                                        controlsVisible = true
+                                        val d = download
+                                        if (d?.status == DownloadStatus.DONE) {
+                                            pendingDelete = d
+                                        } else {
+                                            viewModel.toggleDownload()
+                                        }
+                                    },
+                                    modifier = Modifier.size(48.dp).clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.45f)),
+                                ) {
+                                    DownloadButtonContent(download)
+                                }
+                                Spacer(Modifier.width(4.dp))
+                            }
                             IconButton(
                                 onClick = {
                                     controlsVisible = true
@@ -898,6 +926,19 @@ fun PlayerScreen(
                 },
                 onDismiss = { sleepDialogVisible = false },
             )
+        }
+
+        pendingDelete?.let { dl ->
+            ConfirmDeleteDialog(
+                title = stringResource(R.string.player_download_delete_title),
+                text = stringResource(R.string.player_download_delete_confirm),
+                onConfirm = {
+                    pendingDelete = null
+                    viewModel.deleteDownload()
+                },
+                onDismiss = { pendingDelete = null },
+            )
+            @Suppress("UNUSED_EXPRESSION") dl
         }
 
         when {
@@ -1534,5 +1575,58 @@ private fun ErrorOverlay(
                 }
             }
         }
+    }
+}
+
+/** Icono del botón de descarga según el estado de la fila `downloads`. */
+@Composable
+private fun DownloadButtonContent(download: com.iptv.core.storage.entity.DownloadEntity?) {
+    when (download?.status) {
+        com.iptv.core.storage.entity.DownloadStatus.QUEUED,
+        com.iptv.core.storage.entity.DownloadStatus.DOWNLOADING,
+        -> {
+            val pct = if (download.totalBytes > 0) {
+                (download.downloadedBytes * 100 / download.totalBytes).toInt()
+            } else {
+                -1
+            }
+            Box(contentAlignment = Alignment.Center) {
+                if (pct >= 0) {
+                    CircularProgressIndicator(
+                        progress = { pct / 100f },
+                        modifier = Modifier.size(30.dp),
+                        color = PlayerCarmine,
+                        strokeWidth = 2.dp,
+                    )
+                    Text(
+                        "$pct%",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 8.sp,
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(30.dp),
+                        color = PlayerCarmine,
+                        strokeWidth = 2.dp,
+                    )
+                }
+            }
+        }
+        com.iptv.core.storage.entity.DownloadStatus.DONE -> Icon(
+            imageVector = Icons.Filled.DownloadDone,
+            contentDescription = stringResource(R.string.player_downloaded),
+            tint = PlayerCarmine,
+        )
+        com.iptv.core.storage.entity.DownloadStatus.FAILED -> Icon(
+            imageVector = Icons.Filled.ErrorOutline,
+            contentDescription = stringResource(R.string.player_download_failed),
+            tint = Color.White,
+        )
+        else -> Icon(
+            imageVector = Icons.Filled.Download,
+            contentDescription = stringResource(R.string.player_download),
+            tint = Color.White,
+        )
     }
 }

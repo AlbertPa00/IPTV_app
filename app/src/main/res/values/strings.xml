@@ -6,4 +6,8 @@
     <string name="nav_series">Series</string>
     <string name="nav_guide">Guía</string>
     <string name="nav_settings">Ajustes</string>
+    <string name="download_channel_name">Descargas</string>
+    <string name="download_channel_desc">Progreso de las descargas de vídeo</string>
+    <string name="download_notification_title">Descargando %1$s</string>
+    <string name="download_notification_progress_unknown">Descarga en curso…</string>
 </resources>

@@ -75,4 +75,23 @@
     <string name="lang_mc">Music</string>
     <string name="lang_rx">Relax</string>
     <string name="catalog_quick_hint">Tap a channel to watch it. The ★ saves it to favorites.</string>
+    <string name="catalog_downloads_row">Downloaded</string>
+    <string name="catalog_menu_play">Play</string>
+    <string name="catalog_menu_download">Download to watch offline</string>
+    <string name="catalog_menu_download_cancel">Cancel download</string>
+    <string name="catalog_menu_download_delete">Delete download</string>
+    <string name="catalog_download_delete_title">Delete download?</string>
+    <string name="catalog_download_delete_confirm">"%1$s" will be removed from downloads and the downloaded file deleted.</string>
+    <string name="catalog_menu_download_retry">Retry download</string>
+    <string name="details_download">Download</string>
+    <string name="details_downloading">Downloading… %1$d%%</string>
+    <string name="details_downloaded">Downloaded</string>
+    <string name="details_download_retry">Retry download</string>
+    <string name="details_download_remove">Delete download</string>
+    <string name="catalog_downloads_empty">No downloads yet</string>
+    <string name="download_state_queued">Queued…</string>
+    <string name="download_state_done">Downloaded · %1$s</string>
+    <string name="download_state_failed">Download failed — tap to retry</string>
+    <string name="download_state_progress">Downloading · %1$d%% · %2$s of %3$s</string>
+    <string name="download_state_progress_unknown">Downloading · %1$s</string>
 </resources>

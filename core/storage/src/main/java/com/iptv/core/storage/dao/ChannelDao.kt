@@ -1,5 +1,6 @@
 package com.iptv.core.storage.dao
 
+import android.database.Cursor
 import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
@@ -129,11 +130,32 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     suspend fun liveBySource(sourceId: Long): List<ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = 'SERIES' AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
-    suspend fun seriesBySource(sourceId: Long): List<ChannelEntity>
+    /**
+     * Escaneo ligero de las series de una fuente (sólo las columnas que el
+     * detalle usa para agrupar episodios): materializar todas las entidades
+     * provocaba picos de memoria al abrir una serie en listas grandes.
+     */
+    @Query("SELECT id, name, logoUrl, containerExt FROM channels WHERE sourceId = :sourceId AND kind = 'SERIES' AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY")
+    fun seriesCursor(sourceId: Long): Cursor
 
     @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = :kind AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     suspend fun channelIds(sourceId: Long, kind: String): List<Long>
+
+    // -- Descargas ------------------------------------------------------------
+    // El carrusel/parrilla "Descargados" une downloads→channels para reutilizar
+    // las tarjetas del catálogo; el estado/progreso llega por DownloadDao.
+
+    @Query(
+        "SELECT c.* FROM channels c INNER JOIN downloads d ON d.channelId = c.id " +
+            "WHERE d.section = :section ORDER BY d.createdAt DESC LIMIT :limit",
+    )
+    fun observeDownloadedChannels(section: String, limit: Int): Flow<List<ChannelEntity>>
+
+    @Query(
+        "SELECT c.* FROM channels c INNER JOIN downloads d ON d.channelId = c.id " +
+            "WHERE d.section = :section ORDER BY d.createdAt DESC",
+    )
+    fun pagingDownloadedChannels(section: String): PagingSource<Int, ChannelEntity>
 
     // -- Staging de importación ----------------------------------------------
     // El catálogo nuevo se vuelca en `channels_staging` durante el parseo y se
@@ -148,6 +170,10 @@ interface ChannelDao {
 
     @Query("DELETE FROM channels_staging WHERE sourceId = :sourceId")
     suspend fun clearStaging(sourceId: Long)
+
+    /** Rollback por sección cuando un volcado por lotes falla a mitad. */
+    @Query("DELETE FROM channels_staging WHERE sourceId = :sourceId AND kind = :kind")
+    suspend fun clearStagingByKind(sourceId: Long, kind: String)
 
     @Query(
         """
@@ -190,16 +216,21 @@ interface ChannelDao {
     )
     suspend fun insertStagedNew(sourceId: Long)
 
+    // Los items con descarga también sobreviven a la resincronización aunque
+    // el proveedor los retire: borrar su fila ancla dejaría el fichero huérfano.
+
     @Query(
         "DELETE FROM channels WHERE sourceId = :sourceId AND externalId NOT LIKE 'episode:%' " +
-            "AND externalId NOT IN (SELECT externalId FROM channels_staging WHERE sourceId = :sourceId)",
+            "AND externalId NOT IN (SELECT externalId FROM channels_staging WHERE sourceId = :sourceId) " +
+            "AND id NOT IN (SELECT channelId FROM downloads)",
     )
     suspend fun deleteAbsent(sourceId: Long)
 
     @Query(
         "DELETE FROM channels WHERE sourceId = :sourceId AND kind NOT IN (:keptKinds) " +
             "AND externalId NOT LIKE 'episode:%' " +
-            "AND externalId NOT IN (SELECT externalId FROM channels_staging WHERE sourceId = :sourceId)",
+            "AND externalId NOT IN (SELECT externalId FROM channels_staging WHERE sourceId = :sourceId) " +
+            "AND id NOT IN (SELECT channelId FROM downloads)",
     )
     suspend fun deleteAbsentExcept(sourceId: Long, keptKinds: Collection<String>)
 }

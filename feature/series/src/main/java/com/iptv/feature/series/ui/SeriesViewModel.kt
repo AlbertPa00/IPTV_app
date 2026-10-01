@@ -3,6 +3,11 @@ package com.iptv.feature.series.ui
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.iptv.core.common.download.DownloadController
+import com.iptv.core.storage.dao.DownloadDao
+import com.iptv.core.storage.entity.DownloadEntity
+import com.iptv.core.storage.entity.DownloadSections
+import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.feature.series.R
 import com.iptv.feature.series.data.SeriesDetails
 import com.iptv.feature.series.data.SeriesEpisode
@@ -11,9 +16,12 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -22,6 +30,8 @@ import javax.inject.Inject
 class SeriesViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: SeriesRepository,
+    private val downloadDao: DownloadDao,
+    private val downloadController: DownloadController,
 ) : ViewModel() {
     data class UiState(
         val loading: Boolean = true,
@@ -29,6 +39,7 @@ class SeriesViewModel @Inject constructor(
         val selectedSeason: Int? = null,
         @androidx.annotation.StringRes val errorRes: Int? = null,
         val preparingEpisodeId: String? = null,
+        val preparingDownloadId: String? = null,
     )
 
     private val seriesId = checkNotNull(savedStateHandle.get<Long>("seriesId"))
@@ -36,6 +47,24 @@ class SeriesViewModel @Inject constructor(
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
     private val _openPlayer = MutableSharedFlow<Long>(extraBufferCapacity = 1)
     val openPlayer: SharedFlow<Long> = _openPlayer.asSharedFlow()
+
+    /**
+     * Descargas de episodios indexadas por [SeriesEpisode.id]: en Xtream la
+     * fila materializada usa externalId "episode:<id>"; en M3U el episodio es
+     * el propio canal y su id coincide con el de la descarga.
+     */
+    val downloads: StateFlow<Map<String, DownloadEntity>> = downloadDao.observeAll()
+        .map { list ->
+            list.filter { it.section == DownloadSections.EPISODE }
+                .associateBy { download ->
+                    if (download.externalId.startsWith("episode:")) {
+                        download.externalId.removePrefix("episode:")
+                    } else {
+                        download.channelId.toString()
+                    }
+                }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     init { load() }
 
@@ -69,5 +98,36 @@ class SeriesViewModel @Inject constructor(
                 }
             _uiState.update { it.copy(preparingEpisodeId = null) }
         }
+    }
+
+    /**
+     * Icono de descarga del episodio: sin descarga la encola (materializando
+     * la fila Xtream si hace falta), en curso la cancela y fallida
+     * reintenta. Cuando está completada la pantalla pide confirmación y
+     * llama a [deleteDownload].
+     */
+    fun toggleDownload(episode: SeriesEpisode) {
+        val existing = downloads.value[episode.id]
+        viewModelScope.launch {
+            when (existing?.status) {
+                null, DownloadStatus.FAILED -> {
+                    _uiState.update { it.copy(preparingDownloadId = episode.id, errorRes = null) }
+                    runCatching { repository.prepareEpisode(seriesId, episode) }
+                        .onSuccess { downloadController.enqueue(it, DownloadSections.EPISODE) }
+                        .onFailure {
+                            _uiState.update { s -> s.copy(errorRes = R.string.series_error_download) }
+                        }
+                    _uiState.update { it.copy(preparingDownloadId = null) }
+                }
+                DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING ->
+                    downloadController.cancel(existing.channelId)
+                else -> Unit
+            }
+        }
+    }
+
+    /** Borra la descarga y su fichero tras confirmar en UI. */
+    fun deleteDownloadById(downloadId: Long) {
+        viewModelScope.launch { downloadController.delete(downloadId) }
     }
 }

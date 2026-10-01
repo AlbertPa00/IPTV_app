@@ -39,6 +39,17 @@ class AppPreferences @Inject constructor(
     fun isAutoRefreshEnabled(): Boolean = prefs.getBoolean(KEY_AUTO_REFRESH, true)
     fun isAutoRefreshWifiOnly(): Boolean = prefs.getBoolean(KEY_WIFI_ONLY, true)
 
+    // -- Descargas ------------------------------------------------------------
+
+    /** Descargas de vídeo sólo por Wi-Fi (por defecto sí: pesan GBs). */
+    val downloadsWifiOnly: Flow<Boolean> = booleanFlow(KEY_DOWNLOADS_WIFI_ONLY, default = true)
+
+    fun setDownloadsWifiOnly(wifiOnly: Boolean) {
+        prefs.edit().putBoolean(KEY_DOWNLOADS_WIFI_ONLY, wifiOnly).apply()
+    }
+
+    fun isDownloadsWifiOnly(): Boolean = prefs.getBoolean(KEY_DOWNLOADS_WIFI_ONLY, true)
+
     // -- Informes de fallos (opt-in) -----------------------------------------
 
     val crashReportingEnabled: Flow<Boolean> = booleanFlow(KEY_CRASH_REPORTING, default = false)
@@ -110,6 +121,15 @@ class AppPreferences @Inject constructor(
         prefs.edit().putBoolean(KEY_LIVE_HINT_SEEN, true).apply()
     }
 
+    // -- Guía EPG --------------------------------------------------------------
+
+    /** Instantánea de la última descarga EPG exitosa; 0 = nunca. */
+    fun epgLastSyncAt(): Long = prefs.getLong(KEY_EPG_LAST_SYNC, 0L)
+
+    fun setEpgLastSyncAt(atUtc: Long) {
+        prefs.edit().putLong(KEY_EPG_LAST_SYNC, atUtc).apply()
+    }
+
     // -- Backfill de idioma ---------------------------------------------------
 
     /** Versión del detector de idioma ya aplicada al catálogo. */
@@ -160,6 +180,8 @@ class AppPreferences @Inject constructor(
         const val KEY_CAST_PERMS_ASKED = "cast_perms_asked"
         const val KEY_ONBOARDING_DONE = "onboarding_completed"
         const val KEY_LIVE_HINT_SEEN = "live_hint_seen"
+        const val KEY_DOWNLOADS_WIFI_ONLY = "downloads_wifi_only"
+        const val KEY_EPG_LAST_SYNC = "epg_last_sync_at"
         const val SALT_BYTES = 16
     }
 }

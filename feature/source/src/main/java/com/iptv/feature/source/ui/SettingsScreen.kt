@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,11 +50,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.iptv.core.common.text.formatBytes
+import com.iptv.core.designsystem.components.ConfirmDeleteDialog
 import com.iptv.core.storage.entity.CategoryEntity
+import com.iptv.core.storage.entity.DownloadEntity
+import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.core.storage.entity.SourceTypes
 import com.iptv.feature.source.R
 import java.text.DateFormat
@@ -73,8 +79,10 @@ fun SettingsScreen(
 ) {
     val sourcesState by sourcesViewModel.uiState.collectAsStateWithLifecycle()
     val settings by settingsViewModel.uiState.collectAsStateWithLifecycle()
+    val downloadsUi by settingsViewModel.downloadsUi.collectAsStateWithLifecycle()
     var showLicenses by remember { mutableStateOf(false) }
     var showPrivacy by remember { mutableStateOf(false) }
+    var showDownloads by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -175,6 +183,15 @@ fun SettingsScreen(
 
         item {
             SwitchRow(
+                title = stringResource(R.string.settings_downloads_wifi_only),
+                subtitle = stringResource(R.string.settings_downloads_wifi_only_sub),
+                checked = settings.downloadsWifiOnly,
+                onCheckedChange = settingsViewModel::setDownloadsWifiOnly,
+            )
+        }
+
+        item {
+            SwitchRow(
                 title = stringResource(R.string.settings_crash_reporting),
                 subtitle = stringResource(R.string.settings_crash_reporting_sub),
                 checked = settings.crashReporting,
@@ -192,6 +209,47 @@ fun SettingsScreen(
                     Spacer(Modifier.size(8.dp))
                     Text(stringResource(R.string.settings_categories_manage))
                 }
+            }
+        }
+
+        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+
+        item {
+            Text(
+                stringResource(R.string.settings_downloads_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+        }
+
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showDownloads = true }
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.settings_downloads_manage),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        stringResource(
+                            R.string.settings_downloads_storage_sub,
+                            downloadsUi.items.size,
+                            formatBytes(downloadsUi.usedBytes),
+                            formatBytes(downloadsUi.freeBytes),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 
@@ -256,11 +314,24 @@ fun SettingsScreen(
 
     // -- Diálogos ---------------------------------------------------------
 
-    sourcesState.pendingDelete?.let { source ->
+    sourcesState.pendingDelete?.let { pending ->
         AlertDialog(
             onDismissRequest = sourcesViewModel::dismissDelete,
             title = { Text(stringResource(R.string.sources_delete_title)) },
-            text = { Text(stringResource(R.string.sources_delete_confirm, source.name)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.sources_delete_confirm, pending.source.name))
+                    if (pending.downloadCount > 0) {
+                        Text(
+                            stringResource(
+                                R.string.sources_delete_confirm_downloads,
+                                pending.downloadCount,
+                            ),
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = sourcesViewModel::confirmDelete) {
                     Text(stringResource(R.string.sources_delete_yes))
@@ -271,6 +342,40 @@ fun SettingsScreen(
                     Text(stringResource(R.string.sources_delete_no))
                 }
             },
+        )
+    }
+
+    if (showDownloads) {
+        DownloadsDialog(
+            items = downloadsUi.items,
+            onDelete = settingsViewModel::requestDownloadDelete,
+            onDeleteAll = {
+                showDownloads = false
+                settingsViewModel.requestDeleteAllDownloads()
+            },
+            onDismiss = { showDownloads = false },
+        )
+    }
+
+    downloadsUi.pendingDelete?.let { download ->
+        ConfirmDeleteDialog(
+            title = stringResource(R.string.settings_downloads_delete_title),
+            text = stringResource(R.string.settings_downloads_delete_confirm, download.title),
+            onConfirm = settingsViewModel::confirmDownloadDelete,
+            onDismiss = settingsViewModel::dismissDownloadDelete,
+        )
+    }
+
+    if (downloadsUi.confirmDeleteAll) {
+        ConfirmDeleteDialog(
+            title = stringResource(R.string.settings_downloads_delete_all_title),
+            text = stringResource(
+                R.string.settings_downloads_delete_all_confirm,
+                downloadsUi.items.size,
+                formatBytes(downloadsUi.usedBytes),
+            ),
+            onConfirm = settingsViewModel::confirmDeleteAllDownloads,
+            onDismiss = settingsViewModel::dismissDeleteAllDownloads,
         )
     }
 
@@ -309,6 +414,92 @@ fun SettingsScreen(
             onDismiss = { showPrivacy = false },
         )
     }
+}
+
+@Composable
+private fun DownloadsDialog(
+    items: List<DownloadEntity>,
+    onDelete: (DownloadEntity) -> Unit,
+    onDeleteAll: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_downloads_title)) },
+        text = {
+            if (items.isEmpty()) {
+                Text(stringResource(R.string.settings_downloads_empty))
+            } else {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(items, key = { it.id }) { download ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    download.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    downloadStatusLabel(download),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(onClick = { onDelete(download) }) {
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription =
+                                        stringResource(R.string.settings_downloads_delete_title),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_close))
+            }
+        },
+        dismissButton = if (items.isNotEmpty()) {
+            {
+                TextButton(onClick = onDeleteAll) {
+                    Text(
+                        stringResource(R.string.settings_downloads_delete_all),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        } else {
+            null
+        },
+    )
+}
+
+@Composable
+private fun downloadStatusLabel(download: DownloadEntity): String = when (download.status) {
+    DownloadStatus.DONE -> stringResource(
+        R.string.settings_download_state_done,
+        formatBytes(download.totalBytes.takeIf { it > 0 } ?: download.downloadedBytes),
+    )
+
+    DownloadStatus.DOWNLOADING -> stringResource(
+        R.string.settings_download_state_downloading,
+        if (download.totalBytes > 0) {
+            "${formatBytes(download.downloadedBytes)} / ${formatBytes(download.totalBytes)}"
+        } else {
+            formatBytes(download.downloadedBytes)
+        },
+    )
+
+    DownloadStatus.FAILED -> stringResource(R.string.settings_download_state_failed)
+
+    else -> stringResource(R.string.settings_download_state_queued)
 }
 
 @Composable

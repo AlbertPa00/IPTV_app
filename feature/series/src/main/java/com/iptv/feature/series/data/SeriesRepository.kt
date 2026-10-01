@@ -73,12 +73,27 @@ class SeriesRepository @Inject constructor(
      * que los episodios se reconstruyen agrupando por título base. Las
      * entradas sin patrón SxxExx forman una temporada con un solo episodio.
      * El id del episodio es el id del canal ya guardado.
+     *
+     * El escaneo va por Cursor y sólo lee las columnas necesarias: cargar
+     * todas las entidades de la fuente para encontrar una serie provocaba
+     * picos de memoria con listas grandes.
      */
     private suspend fun loadFromPlaylist(series: ChannelEntity): SeriesDetails {
         val baseKey = PlaylistEpisodeParser.baseKey(series.name)
-        val episodes = channelDao.seriesBySource(series.sourceId)
-            .filter { PlaylistEpisodeParser.baseKey(it.name) == baseKey }
-            .map { it to (PlaylistEpisodeParser.parse(it.name)) }
+        val episodes = mutableListOf<Pair<SeriesRow, PlaylistEpisodeParser.Parsed?>>()
+        channelDao.seriesCursor(series.sourceId).use { cursor ->
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(1)
+                if (PlaylistEpisodeParser.baseKey(name) != baseKey) continue
+                episodes += SeriesRow(
+                    id = cursor.getLong(0),
+                    name = name,
+                    logoUrl = cursor.getStringOrNull(2),
+                    containerExt = cursor.getStringOrNull(3),
+                ) to PlaylistEpisodeParser.parse(name)
+            }
+        }
+        val seasons = episodes
             .sortedWith(
                 compareBy(
                     { it.second?.season ?: 1 },
@@ -86,23 +101,22 @@ class SeriesRepository @Inject constructor(
                     { it.first.name },
                 ),
             )
-        val seasons = episodes
             .groupBy { it.second?.season ?: 1 }
             .toSortedMap()
             .map { (seasonNumber, entries) ->
                 SeriesSeason(
                     number = seasonNumber,
                     title = "Temporada $seasonNumber",
-                    episodes = entries.mapIndexed { index, (channel, parsed) ->
+                    episodes = entries.mapIndexed { index, (row, parsed) ->
                         SeriesEpisode(
-                            id = channel.id.toString(),
+                            id = row.id.toString(),
                             number = parsed?.episode ?: (index + 1),
-                            title = channel.name,
+                            title = row.name,
                             plot = null,
-                            imageUrl = channel.logoUrl ?: series.logoUrl,
+                            imageUrl = row.logoUrl ?: series.logoUrl,
                             rating = null,
                             duration = null,
-                            extension = channel.containerExt ?: "mp4",
+                            extension = row.containerExt ?: "mp4",
                         )
                     },
                 )
@@ -149,3 +163,14 @@ class SeriesRepository @Inject constructor(
 }
 
 class SeriesLoadException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/** Columnas mínimas que el agrupador de episodios M3U lee del cursor. */
+private data class SeriesRow(
+    val id: Long,
+    val name: String,
+    val logoUrl: String?,
+    val containerExt: String?,
+)
+
+private fun android.database.Cursor.getStringOrNull(index: Int): String? =
+    if (isNull(index)) null else getString(index)

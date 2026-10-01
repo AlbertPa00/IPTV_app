@@ -2,4 +2,6 @@
 <resources>
     <string name="ds_loading">Cargando…</string>
     <string name="ds_retry">Reintentar</string>
+    <string name="ds_delete">Eliminar</string>
+    <string name="ds_cancel">Cancelar</string>
 </resources>

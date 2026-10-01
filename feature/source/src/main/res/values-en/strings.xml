@@ -60,6 +60,7 @@
     <string name="sources_delete">Delete</string>
     <string name="sources_delete_title">Delete source?</string>
     <string name="sources_delete_confirm">"%1$s" and all its channels will be deleted. This action cannot be undone.</string>
+    <string name="sources_delete_confirm_downloads">Its %1$d downloads and their files will also be deleted.</string>
     <string name="sources_delete_yes">Delete</string>
     <string name="sources_delete_no">Cancel</string>
     <string name="sources_last_sync">Last updated: %1$s</string>
@@ -108,4 +109,20 @@
     <string name="sources_refresh_failed">The source could not be refreshed.</string>
     <string name="source_sync_partial">The source was added, but %1$s could not be downloaded: the server did not respond. You can retry from Settings → Refresh.</string>
     <string name="source_continue">Continue</string>
+    <string name="settings_downloads_wifi_only">Download on Wi-Fi only</string>
+    <string name="settings_downloads_wifi_only_sub">Don\'t download movies or episodes using mobile data</string>
+    <string name="settings_downloads_title">Downloads</string>
+    <string name="settings_downloads_manage">Manage downloads</string>
+    <string name="settings_downloads_storage_sub">%1$d items · %2$s used · %3$s free</string>
+    <string name="settings_downloads_empty">No downloads yet</string>
+    <string name="settings_downloads_delete_all">Delete all</string>
+    <string name="settings_downloads_delete_all_title">Delete all downloads?</string>
+    <string name="settings_downloads_delete_all_confirm">%1$d downloads (%2$s) and their files will be deleted. This action cannot be undone.</string>
+    <string name="settings_downloads_delete_title">Delete download?</string>
+    <string name="settings_downloads_delete_confirm">"%1$s" will be removed from downloads and the downloaded file deleted.</string>
+    <string name="settings_download_state_done">Downloaded · %1$s</string>
+    <string name="settings_download_state_queued">Queued…</string>
+    <string name="settings_download_state_downloading">Downloading · %1$s</string>
+    <string name="settings_download_state_failed">Download failed</string>
+    <string name="settings_close">Close</string>
 </resources>

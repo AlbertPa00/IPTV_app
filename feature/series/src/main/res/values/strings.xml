@@ -10,4 +10,10 @@
     <string name="series_duration">Duración: %1$s</string>
     <string name="series_error_load">No se pudo cargar la serie.</string>
     <string name="series_error_play">No se pudo abrir el episodio.</string>
+    <string name="series_episode_download">Descargar episodio</string>
+    <string name="series_episode_download_cancel">Cancelar descarga</string>
+    <string name="series_episode_downloaded">Episodio descargado</string>
+    <string name="series_error_download">No se pudo preparar la descarga del episodio</string>
+    <string name="series_download_delete_title">¿Eliminar descarga?</string>
+    <string name="series_download_delete_confirm">Se eliminará «%1$s» de las descargas y se borrará el fichero descargado.</string>
 </resources>

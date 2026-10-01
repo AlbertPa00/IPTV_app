@@ -75,4 +75,23 @@
     <string name="lang_mc">Música</string>
     <string name="lang_rx">Relax</string>
     <string name="catalog_quick_hint">Toca un canal para verlo. La ★ lo guarda en favoritos.</string>
+    <string name="catalog_downloads_row">Descargados</string>
+    <string name="catalog_menu_play">Reproducir</string>
+    <string name="catalog_menu_download">Descargar para ver sin conexión</string>
+    <string name="catalog_menu_download_cancel">Cancelar descarga</string>
+    <string name="catalog_menu_download_delete">Eliminar descarga</string>
+    <string name="catalog_download_delete_title">¿Eliminar descarga?</string>
+    <string name="catalog_download_delete_confirm">Se eliminará «%1$s» de las descargas y se borrará el fichero descargado.</string>
+    <string name="catalog_menu_download_retry">Reintentar descarga</string>
+    <string name="details_download">Descargar</string>
+    <string name="details_downloading">Descargando… %1$d%%</string>
+    <string name="details_downloaded">Descargada</string>
+    <string name="details_download_retry">Reintentar descarga</string>
+    <string name="details_download_remove">Eliminar descarga</string>
+    <string name="catalog_downloads_empty">Aún no hay descargas</string>
+    <string name="download_state_queued">En cola…</string>
+    <string name="download_state_done">Descargada · %1$s</string>
+    <string name="download_state_failed">Error al descargar — toca para reintentar</string>
+    <string name="download_state_progress">Descargando · %1$d%% · %2$s de %3$s</string>
+    <string name="download_state_progress_unknown">Descargando · %1$s</string>
 </resources>

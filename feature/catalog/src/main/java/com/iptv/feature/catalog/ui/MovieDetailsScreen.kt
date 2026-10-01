@@ -19,20 +19,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,9 +51,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.iptv.core.designsystem.components.ConfirmDeleteDialog
 import com.iptv.core.designsystem.components.EmptyState
 import com.iptv.core.designsystem.components.IptvAsyncImage
 import com.iptv.core.designsystem.components.LoadingState
+import com.iptv.core.storage.entity.DownloadEntity
+import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.feature.catalog.R
 
 /** Ficha de película: fondo, metadatos Xtream y acciones reproducir/reanudar. */
@@ -58,7 +67,9 @@ fun MovieDetailsScreen(
     viewModel: MovieDetailsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val download by viewModel.download.collectAsStateWithLifecycle()
     val channel = state.channel
+    var pendingDelete by remember { mutableStateOf<DownloadEntity?>(null) }
 
     Box(Modifier.fillMaxSize().background(CinemaBlack)) {
         when {
@@ -66,22 +77,46 @@ fun MovieDetailsScreen(
             channel == null -> EmptyState(stringResource(R.string.details_not_found))
             else -> DetailsContent(
                 state = state,
+                download = download,
                 onBack = onBack,
                 onPlay = { onPlay(channel.id) },
                 onRestart = { viewModel.playFromStart { onPlay(channel.id) } },
                 onToggleFavorite = viewModel::toggleFavorite,
+                onToggleDownload = {
+                    // Con la descarga completada el botón borra el fichero:
+                    // se pide confirmación antes de tocar el ViewModel.
+                    val current = download
+                    if (current?.status == DownloadStatus.DONE) {
+                        pendingDelete = current
+                    } else {
+                        viewModel.toggleDownload()
+                    }
+                },
             )
         }
+    }
+    pendingDelete?.let { toDelete ->
+        ConfirmDeleteDialog(
+            title = stringResource(R.string.catalog_download_delete_title),
+            text = stringResource(R.string.catalog_download_delete_confirm, toDelete.title),
+            onConfirm = {
+                viewModel.deleteDownload()
+                pendingDelete = null
+            },
+            onDismiss = { pendingDelete = null },
+        )
     }
 }
 
 @Composable
 private fun DetailsContent(
     state: MovieDetailsViewModel.UiState,
+    download: com.iptv.core.storage.entity.DownloadEntity?,
     onBack: () -> Unit,
     onPlay: () -> Unit,
     onRestart: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onToggleDownload: () -> Unit,
 ) {
     val channel = state.channel ?: return
     val info = state.info
@@ -129,9 +164,11 @@ private fun DetailsContent(
             Spacer(Modifier.height(18.dp))
             ActionRow(
                 state = state,
+                download = download,
                 onPlay = onPlay,
                 onRestart = onRestart,
                 onToggleFavorite = onToggleFavorite,
+                onToggleDownload = onToggleDownload,
             )
             info?.plot?.takeIf { it.isNotBlank() }?.let { plot ->
                 Spacer(Modifier.height(18.dp))
@@ -170,9 +207,11 @@ private fun MetaRow(state: MovieDetailsViewModel.UiState) {
 @Composable
 private fun ActionRow(
     state: MovieDetailsViewModel.UiState,
+    download: com.iptv.core.storage.entity.DownloadEntity?,
     onPlay: () -> Unit,
     onRestart: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onToggleDownload: () -> Unit,
 ) {
     val channel = state.channel ?: return
     Column {
@@ -216,20 +255,25 @@ private fun ActionRow(
                     ),
                 )
             }
-            OutlinedButton(onClick = onToggleFavorite) {
+            IconButton(
+                onClick = onToggleFavorite,
+                modifier = Modifier.size(46.dp).clip(CircleShape).background(Graphite),
+            ) {
                 Icon(
                     imageVector = Icons.Filled.Star,
-                    contentDescription = null,
-                    tint = if (channel.isFavorite) Carmine else MutedText,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    stringResource(
+                    contentDescription = stringResource(
                         if (channel.isFavorite) R.string.catalog_favorite_remove
                         else R.string.catalog_favorite_add,
                     ),
+                    tint = if (channel.isFavorite) Carmine else MutedText,
+                    modifier = Modifier.size(22.dp),
                 )
+            }
+            IconButton(
+                onClick = onToggleDownload,
+                modifier = Modifier.size(46.dp).clip(CircleShape).background(Graphite),
+            ) {
+                DownloadIconState(download)
             }
         }
         if (state.hasProgress) {
@@ -276,6 +320,55 @@ private fun InfoSection(state: MovieDetailsViewModel.UiState) {
                 )
             }
         }
+    }
+}
+
+/** Icono del botón de descarga de la ficha según el estado actual. */
+@Composable
+private fun DownloadIconState(
+    download: com.iptv.core.storage.entity.DownloadEntity?,
+) {
+    when (download?.status) {
+        DownloadStatus.DONE -> Icon(
+            Icons.Filled.DownloadDone,
+            contentDescription = stringResource(R.string.details_download_remove),
+            tint = Carmine,
+            modifier = Modifier.size(22.dp),
+        )
+        DownloadStatus.FAILED -> Icon(
+            Icons.Filled.ErrorOutline,
+            contentDescription = stringResource(R.string.details_download_retry),
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(22.dp),
+        )
+        DownloadStatus.QUEUED -> CircularProgressIndicator(
+            modifier = Modifier.size(20.dp),
+            strokeWidth = 2.dp,
+            color = Carmine,
+        )
+        DownloadStatus.DOWNLOADING -> {
+            if (download.totalBytes > 0) {
+                CircularProgressIndicator(
+                    progress = { download.downloadedBytes / download.totalBytes.toFloat() },
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = Carmine,
+                    trackColor = GraphiteLight,
+                )
+            } else {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = Carmine,
+                )
+            }
+        }
+        else -> Icon(
+            Icons.Filled.Download,
+            contentDescription = stringResource(R.string.details_download),
+            tint = Color.White,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 

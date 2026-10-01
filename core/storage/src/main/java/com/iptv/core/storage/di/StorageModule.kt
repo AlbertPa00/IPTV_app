@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.iptv.core.storage.dao.CategoryDao
 import com.iptv.core.storage.dao.ChannelDao
+import com.iptv.core.storage.dao.DownloadDao
 import com.iptv.core.storage.dao.PlaybackHistoryDao
 import com.iptv.core.storage.dao.ProgrammeDao
 import com.iptv.core.storage.dao.SourceDao
@@ -18,6 +19,7 @@ import com.iptv.core.storage.db.MIGRATION_5_6
 import com.iptv.core.storage.db.MIGRATION_6_7
 import com.iptv.core.storage.db.MIGRATION_7_8
 import com.iptv.core.storage.db.MIGRATION_8_9
+import com.iptv.core.storage.db.MIGRATION_9_10
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -36,6 +38,7 @@ object StorageModule {
             .addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                 MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+                MIGRATION_9_10,
             )
             // Los triggers de sincronización de channels_fts los crea Room
             // automáticamente (room_fts_content_sync_*). Esto solo retira los
@@ -70,4 +73,7 @@ object StorageModule {
 
     @Provides
     fun playbackHistoryDao(db: AppDatabase): PlaybackHistoryDao = db.playbackHistoryDao()
+
+    @Provides
+    fun downloadDao(db: AppDatabase): DownloadDao = db.downloadDao()
 }

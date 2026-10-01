@@ -53,4 +53,9 @@
     <string name="player_sleep_off">Desactivar temporizador</string>
     <string name="player_brightness">Brillo</string>
     <string name="player_volume">Volumen</string>
+    <string name="player_download">Descargar para ver sin conexión</string>
+    <string name="player_downloaded">Descargado (toca para eliminar)</string>
+    <string name="player_download_failed">Descarga fallida (toca para reintentar)</string>
+    <string name="player_download_delete_title">¿Eliminar descarga?</string>
+    <string name="player_download_delete_confirm">Se borrará el fichero descargado de este dispositivo.</string>
 </resources>
