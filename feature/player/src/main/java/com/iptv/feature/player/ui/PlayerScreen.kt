@@ -1057,6 +1057,7 @@ private fun ChannelListPanel(
                             model = channel.logoUrl,
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize().padding(3.dp),
+                            animated = true,
                         )
                     }
                     Spacer(Modifier.width(12.dp))
@@ -1117,6 +1118,7 @@ private fun CastBackdrop(
                         model = state.channel?.logoUrl,
                         contentDescription = state.channel?.name,
                         modifier = Modifier.fillMaxSize().padding(10.dp),
+                        animated = true,
                     )
                 }
             }

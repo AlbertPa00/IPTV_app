@@ -36,11 +36,18 @@ class SearchFlowTest {
                 .collectLatest { seen += it.second.query }
         }
 
-        delay(50)
+        // Espera activa a cada emisión: con delay fijo, un scheduler lento
+        // podía dejar que "espn" cancelara el debounce pendiente de "".
+        suspend fun awaitSeen(expected: List<String>) {
+            val deadline = System.currentTimeMillis() + 2_000
+            while (seen != expected && System.currentTimeMillis() < deadline) delay(10)
+        }
+
+        awaitSeen(listOf(""))
         filters.value = Filters("espn")
-        delay(500)
+        awaitSeen(listOf("", "espn"))
         filters.value = Filters("hbo")
-        delay(500)
+        awaitSeen(listOf("", "espn", "hbo"))
         job.cancel()
 
         assertEquals(listOf("", "espn", "hbo"), seen)

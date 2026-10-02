@@ -1,5 +1,8 @@
 package com.iptv.feature.catalog.ui
 
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -253,10 +256,17 @@ class LiveTvViewModel @Inject constructor(
         _filters.update { Filters(query = query.trimStart()) }
     }
 
+    // Estado optimista de favoritos, granular por canal: sólo se recompone
+    // la fila pulsada — un mapa global re-emitía toda la lista por toggle.
+    private val favStates: SnapshotStateMap<Long, Boolean> = mutableStateMapOf()
+
+    /** Override optimista del favorito, o null si no se ha tocado. */
+    fun favOverride(id: Long): Boolean? = favStates[id]
+
     fun toggleFavorite(channel: ChannelEntity) {
-        viewModelScope.launch {
-            channelDao.setFavorite(channel.id, !channel.isFavorite)
-        }
+        val target = !(favStates[channel.id] ?: channel.isFavorite)
+        favStates[channel.id] = target
+        viewModelScope.launch { channelDao.setFavorite(channel.id, target) }
     }
 
     private companion object {

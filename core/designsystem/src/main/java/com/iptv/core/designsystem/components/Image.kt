@@ -8,6 +8,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
+import coil3.decode.BitmapFactoryDecoder
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 
@@ -22,6 +23,11 @@ import coil3.request.crossfade
  * [fadeIn] desactiva el fundido de entrada: en parrillas densas cada póster
  * que entra durante un fling lanzaba una transición alfa simultánea — jank
  * medible. En héroes y fichas sigue activo.
+ *
+ * [animated] = false decodifica sólo el primer fotograma de GIF/WebP
+ * animados: un póster animado re-decodifica a ~10fps y cada tick invalida
+ * y re-graba el árbol de dibujo — jank sostenido medido durante el scroll.
+ * La animación queda reservada a los logos de canal.
  */
 @Composable
 fun IptvAsyncImage(
@@ -31,12 +37,16 @@ fun IptvAsyncImage(
     contentScale: ContentScale = ContentScale.Fit,
     onError: ((AsyncImagePainter.State.Error) -> Unit)? = null,
     fadeIn: Boolean = true,
+    animated: Boolean = false,
 ) {
     val placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
     AsyncImage(
         model = ImageRequest.Builder(LocalContext.current)
             .data(model)
-            .apply { if (fadeIn) crossfade(true) }
+            .apply {
+                if (fadeIn) crossfade(true)
+                if (!animated) decoderFactory(BitmapFactoryDecoder.Factory())
+            }
             .build(),
         contentDescription = contentDescription,
         contentScale = contentScale,

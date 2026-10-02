@@ -92,6 +92,7 @@ fun VodCatalogScreen(
     val browseLoaded by viewModel.browseLoaded.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    val favOverride = viewModel::favOverride
     val content = viewModel.paging.collectAsLazyPagingItems()
     var showLanguagePicker by remember { mutableStateOf(false) }
     // Borrar una descarga es destructivo: todos los puntos (menú del póster,
@@ -151,6 +152,7 @@ fun VodCatalogScreen(
                     kind = kind,
                     onItemClick = onItemClick,
                     onToggleFavorite = viewModel::toggleFavorite,
+                    favOverride = favOverride,
                     downloads = downloads,
                     onPlay = onResumeItem,
                     onDownload = viewModel::enqueueDownload,
@@ -165,6 +167,7 @@ fun VodCatalogScreen(
                     onItemClick = onItemClick,
                     onResumeItem = onResumeItem,
                     onToggleFavorite = viewModel::toggleFavorite,
+                    favOverride = favOverride,
                     downloads = downloads,
                     onDownload = viewModel::enqueueDownload,
                     onCancelDownload = { viewModel.cancelDownload(it.id) },
@@ -181,6 +184,7 @@ fun VodCatalogScreen(
                     onItemClick = onItemClick,
                     onResumeItem = onResumeItem,
                     onToggleFavorite = viewModel::toggleFavorite,
+                    favOverride = favOverride,
                     downloads = downloads,
                     onDownload = viewModel::enqueueDownload,
                     onCancelDownload = { viewModel.cancelDownload(it.id) },
@@ -224,6 +228,7 @@ private fun BrowseMode(
     onItemClick: (Long) -> Unit,
     onResumeItem: ((Long) -> Unit)?,
     onToggleFavorite: (ChannelEntity) -> Unit,
+    favOverride: (Long) -> Boolean?,
     downloads: Map<Long, DownloadEntity>,
     onDownload: (ChannelEntity) -> Unit,
     onCancelDownload: (ChannelEntity) -> Unit,
@@ -257,7 +262,7 @@ private fun BrowseMode(
                 val featured = rows.firstNotNullOfOrNull { it.items.firstOrNull()?.channel }
                 if (featured != null) {
                     item(key = "featured") {
-                        FeaturedHero(featured, onItemClick, onToggleFavorite)
+                        FeaturedHero(featured.withFav(favOverride), onItemClick, onToggleFavorite)
                     }
                 }
                 items(rows, key = { rowKey(it) }) { row ->
@@ -279,6 +284,7 @@ private fun BrowseMode(
                         onRowClick = onRowClick,
                         onItemClick = itemClick,
                         onToggleFavorite = onToggleFavorite,
+                        favOverride = favOverride,
                         downloads = downloads,
                         onPlay = if (menuEnabled) onResumeItem else null,
                         onDownload = if (menuEnabled) onDownload else null,
@@ -359,12 +365,17 @@ private fun FeaturedHero(
     }
 }
 
+/** Devuelve la fila con el favorito optimista aplicado (si el usuario lo pulsó). */
+private fun ChannelEntity.withFav(favOverride: (Long) -> Boolean?): ChannelEntity =
+    favOverride(id)?.let { copy(isFavorite = it) } ?: this
+
 @Composable
 private fun CatalogRow(
     row: VodCatalogViewModel.BrowseRow,
     onRowClick: (VodCatalogViewModel.BrowseRow) -> Unit,
     onItemClick: (Long) -> Unit,
     onToggleFavorite: (ChannelEntity) -> Unit,
+    favOverride: (Long) -> Boolean?,
     downloads: Map<Long, DownloadEntity>,
     onPlay: ((Long) -> Unit)?,
     onDownload: ((ChannelEntity) -> Unit)?,
@@ -400,27 +411,28 @@ private fun CatalogRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
         ) {
             items(row.items, key = { it.channel.id }) { item ->
-                val download = downloads[item.channel.id]
+                val channel = item.channel.withFav(favOverride)
+                val download = downloads[channel.id]
                 if (onPlay != null) {
                     PosterCardWithMenu(
-                        item = item.channel,
+                        item = channel,
                         download = download,
                         progress = item.progress,
-                        onClick = { onItemClick(item.channel.id) },
-                        onPlay = { onPlay(item.channel.id) },
-                        onToggleFavorite = { onToggleFavorite(item.channel) },
-                        onDownload = onDownload?.let { dl -> { dl(item.channel) } },
-                        onCancelDownload = { onCancelDownload(item.channel) },
+                        onClick = { onItemClick(channel.id) },
+                        onPlay = { onPlay(channel.id) },
+                        onToggleFavorite = { onToggleFavorite(channel) },
+                        onDownload = onDownload?.let { dl -> { dl(channel) } },
+                        onCancelDownload = { onCancelDownload(channel) },
                         onDeleteDownload = { download?.let(onDeleteDownload) },
                         modifier = Modifier.width(128.dp),
                     )
                 } else {
                     PosterCard(
-                        item = item.channel,
+                        item = channel,
                         progress = item.progress,
                         download = download,
-                        onClick = { onItemClick(item.channel.id) },
-                        onToggleFavorite = { onToggleFavorite(item.channel) },
+                        onClick = { onItemClick(channel.id) },
+                        onToggleFavorite = { onToggleFavorite(channel) },
                         modifier = Modifier.width(128.dp),
                     )
                 }
@@ -438,6 +450,7 @@ private fun GridMode(
     onItemClick: (Long) -> Unit,
     onResumeItem: ((Long) -> Unit)?,
     onToggleFavorite: (ChannelEntity) -> Unit,
+    favOverride: (Long) -> Boolean?,
     downloads: Map<Long, DownloadEntity>,
     onDownload: (ChannelEntity) -> Unit,
     onCancelDownload: (ChannelEntity) -> Unit,
@@ -487,6 +500,7 @@ private fun GridMode(
                         content = content,
                         onClick = onItemClick,
                         onToggleFavorite = onToggleFavorite,
+                        favOverride = favOverride,
                         downloads = downloads,
                         onPlay = if (withMenu) onResumeItem?.let { fn -> { fn(it.id) } } else null,
                         onDownload = if (withMenu) onDownload else null,
@@ -505,6 +519,7 @@ private fun SearchResults(
     kind: ContentKind,
     onItemClick: (Long) -> Unit,
     onToggleFavorite: (ChannelEntity) -> Unit,
+    favOverride: (Long) -> Boolean?,
     downloads: Map<Long, DownloadEntity>,
     onPlay: ((Long) -> Unit)?,
     onDownload: (ChannelEntity) -> Unit,
@@ -526,6 +541,7 @@ private fun SearchResults(
             content = content,
             onClick = onItemClick,
             onToggleFavorite = onToggleFavorite,
+            favOverride = favOverride,
             downloads = downloads,
             onPlay = if (kind == ContentKind.MOVIES) {
                 onPlay?.let { fn -> { fn(it.id) } }

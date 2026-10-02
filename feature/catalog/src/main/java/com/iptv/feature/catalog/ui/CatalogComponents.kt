@@ -470,6 +470,7 @@ internal fun PosterGrid(
     content: LazyPagingItems<ChannelEntity>,
     onClick: (Long) -> Unit,
     onToggleFavorite: (ChannelEntity) -> Unit,
+    favOverride: (Long) -> Boolean? = { null },
     downloads: Map<Long, DownloadEntity> = emptyMap(),
     onPlay: ((ChannelEntity) -> Unit)? = null,
     onDownload: ((ChannelEntity) -> Unit)? = null,
@@ -484,7 +485,11 @@ internal fun PosterGrid(
         modifier = Modifier.fillMaxSize(),
     ) {
         items(count = content.itemCount, key = content.itemKey { it.id }) { index ->
-            content[index]?.let { item ->
+            content[index]?.let { raw ->
+                // La estrella usa el estado optimista: el refresh de Paging
+                // puede tardar segundos en catálogos grandes.
+                val item = favOverride(raw.id)
+                    ?.let { raw.copy(isFavorite = it) } ?: raw
                 val download = downloads[item.id]
                 if (onPlay != null) {
                     PosterCardWithMenu(
@@ -603,6 +608,7 @@ private fun DownloadRow(
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
+                    animated = true,
                 )
             }
         }
@@ -753,6 +759,7 @@ internal fun ChannelLogo(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize().padding(5.dp),
                 onError = { failed = true },
+                animated = true,
             )
         }
     }

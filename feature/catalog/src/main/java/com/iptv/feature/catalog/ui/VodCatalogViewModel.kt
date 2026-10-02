@@ -1,5 +1,8 @@
 package com.iptv.feature.catalog.ui
 
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -443,10 +446,19 @@ class VodCatalogViewModel @Inject constructor(
         _uiState.update { it.copy(grid = null) }
     }
 
+    // Estado optimista de favoritos: la estrella responde al instante y el
+    // refresh de Paging confirma detrás. SnapshotStateMap trackea los get()
+    // en composición: un put invalida solo a las tarjetas visibles que leyeron
+    // el mapa — no a la pantalla entera como hacía el StateFlow en la raíz.
+    private val favStates: SnapshotStateMap<Long, Boolean> = mutableStateMapOf()
+
+    /** Override optimista del favorito, o null si no se ha tocado. */
+    fun favOverride(id: Long): Boolean? = favStates[id]
+
     fun toggleFavorite(channel: ChannelEntity) {
-        viewModelScope.launch {
-            channelDao.setFavorite(channel.id, !channel.isFavorite)
-        }
+        val target = !(favStates[channel.id] ?: channel.isFavorite)
+        favStates[channel.id] = target
+        viewModelScope.launch { channelDao.setFavorite(channel.id, target) }
     }
 
     private companion object {

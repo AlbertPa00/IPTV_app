@@ -242,7 +242,7 @@ private fun GuideChannel(row: GuideRow, onClick: (Long) -> Unit, now: Long) {
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             if (row.channelLogoUrl != null) {
-                IptvAsyncImage(row.channelLogoUrl, contentDescription = null, modifier = Modifier.size(52.dp))
+                IptvAsyncImage(row.channelLogoUrl, contentDescription = null, modifier = Modifier.size(52.dp), animated = true)
             } else {
                 Icon(Icons.Filled.Tv, contentDescription = null, tint = GuideMuted, modifier = Modifier.size(52.dp))
             }

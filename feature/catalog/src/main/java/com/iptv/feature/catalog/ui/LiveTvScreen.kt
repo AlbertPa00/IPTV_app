@@ -82,6 +82,7 @@ fun LiveTvScreen(
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val languages by viewModel.languages.collectAsStateWithLifecycle()
     val guideByChannel by viewModel.guideByChannel.collectAsStateWithLifecycle()
+    val favOverride = viewModel::favOverride
     val showQuickHint by viewModel.showQuickHint.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val content = viewModel.channels.collectAsLazyPagingItems()
@@ -161,7 +162,10 @@ fun LiveTvScreen(
                         )
                     }
                 }
-                else -> ChannelList(content, guideByChannel, now, onChannelClick, viewModel::toggleFavorite)
+                else -> ChannelList(
+                    content, guideByChannel, now, onChannelClick,
+                    viewModel::toggleFavorite, favOverride,
+                )
             }
             if (showQuickHint && content.itemCount > 0) {
                 QuickHintBanner(
@@ -240,6 +244,7 @@ private fun ChannelList(
     now: Long,
     onClick: (Long) -> Unit,
     onToggleFavorite: (ChannelEntity) -> Unit,
+    favOverride: (Long) -> Boolean?,
 ) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -247,7 +252,10 @@ private fun ChannelList(
         modifier = Modifier.fillMaxSize(),
     ) {
         items(count = content.itemCount, key = content.itemKey { it.id }) { index ->
-            content[index]?.let { channel ->
+            content[index]?.let { raw ->
+                // Estrella optimista: no esperar al refresh de Paging.
+                val channel = favOverride(raw.id)
+                    ?.let { raw.copy(isFavorite = it) } ?: raw
                 LiveChannelRow(
                     channel = channel,
                     guide = guideByChannel[channel.id],
