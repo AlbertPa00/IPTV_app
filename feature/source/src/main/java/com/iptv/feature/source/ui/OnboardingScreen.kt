@@ -52,8 +52,8 @@ private const val PAGE_COUNT = 3
  * Onboarding de primer arranque: tres pasos cortos (bienvenida, prueba con la
  * lista demo en un toque y confirmación) que se pueden saltar con "Saltar".
  * Reusa [AddSourceViewModel] para la importación de la demo; al completarse
- * avanza solo al paso final. El swipe está desactivado: la navegación entre
- * pasos es siempre por botón, para no llegar al paso final sin fuente.
+ * avanza solo al paso final. Los pasos también se recorren deslizando; si se
+ * llega al final sin añadir fuente, el cierre invita a explorar la app igual.
  */
 @Composable
 fun OnboardingScreen(
@@ -89,7 +89,6 @@ fun OnboardingScreen(
         }
         HorizontalPager(
             state = pagerState,
-            userScrollEnabled = false,
             modifier = Modifier.weight(1f),
         ) { page ->
             when (page) {
@@ -101,7 +100,7 @@ fun OnboardingScreen(
                     onDemo = { viewModel.addDemoList(demoName) },
                     onOwnSource = onAddOwnSource,
                 )
-                else -> DoneStep(onDone = onDone)
+                else -> DoneStep(hasContent = state.completedSourceId != null, onDone = onDone)
             }
         }
         PagerDots(
@@ -226,7 +225,7 @@ private fun TryStep(
 }
 
 @Composable
-private fun DoneStep(onDone: () -> Unit) {
+private fun DoneStep(hasContent: Boolean, onDone: () -> Unit) {
     OnboardingPage {
         Icon(
             imageVector = Icons.Filled.CheckCircle,
@@ -242,14 +241,22 @@ private fun DoneStep(onDone: () -> Unit) {
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = stringResource(R.string.onboarding_done_body),
+            text = stringResource(
+                if (hasContent) R.string.onboarding_done_body
+                else R.string.onboarding_done_body_empty,
+            ),
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(32.dp))
         Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.onboarding_watch))
+            Text(
+                stringResource(
+                    if (hasContent) R.string.onboarding_watch
+                    else R.string.onboarding_explore,
+                ),
+            )
         }
     }
 }

@@ -259,7 +259,16 @@ private fun BrowseMode(
                 )
             }
             else -> {
-                val featured = rows.firstNotNullOfOrNull { it.items.firstOrNull()?.channel }
+                // "Seguir viendo" y "Descargados" contienen episodios/películas
+                // reproducibles sin ficha: si el héroe los tomaba, en Series
+                // abría la ficha de un episodio (kind=VOD) y fallaba la carga.
+                val featured = rows.firstNotNullOfOrNull { row ->
+                    when (row) {
+                        is VodCatalogViewModel.BrowseRow.ContinueWatching,
+                        is VodCatalogViewModel.BrowseRow.Downloads -> null
+                        else -> row.items.firstOrNull()?.channel
+                    }
+                }
                 if (featured != null) {
                     item(key = "featured") {
                         FeaturedHero(featured.withFav(favOverride), onItemClick, onToggleFavorite)

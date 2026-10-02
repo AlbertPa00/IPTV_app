@@ -1,5 +1,6 @@
 package com.iptv.feature.catalog.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -196,9 +198,16 @@ private fun LiveFilterRail(
     onSelectCategory: (Long) -> Unit,
     onLanguageClick: () -> Unit,
 ) {
+    // En horizontal el rail compite con la lista por altura: padding justo.
+    val railVPad =
+        if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            4.dp
+        } else {
+            10.dp
+        }
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = railVPad),
         modifier = Modifier.fillMaxWidth(),
     ) {
         if (languages.isNotEmpty()) {

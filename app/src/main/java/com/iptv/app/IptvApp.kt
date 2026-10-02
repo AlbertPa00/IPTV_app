@@ -1,5 +1,6 @@
 package com.iptv.app
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -103,16 +104,14 @@ fun IptvApp(viewModel: RootViewModel = hiltViewModel()) {
 
     // El destino inicial se fija una sola vez: si reaccionara a hasSources en
     // vivo, el alta de la lista demo durante el tutorial recrearía el NavHost
-    // y expulsaría al usuario del pager a mitad del paso.
+    // y expulsaría al usuario del pager a mitad del paso. Tutorial completado
+    // sin fuente también entra a Home: la app se explora vacía y la fuente se
+    // añade cuando se quiera desde Ajustes.
     LaunchedEffect(hasSources, onboardingDone) {
         val sources = hasSources
         val done = onboardingDone
         if (startRoute == null && sources != null && done != null) {
-            startRoute = when {
-                sources -> Routes.Home
-                done -> Routes.AddSource
-                else -> Routes.Onboarding
-            }
+            startRoute = if (sources == true || done == true) Routes.Home else Routes.Onboarding
         }
     }
 
@@ -158,7 +157,11 @@ private fun AppNavigation(
                 OnboardingScreen(
                     onSkip = {
                         onOnboardingComplete()
-                        navController.navigate(Routes.AddSource)
+                        // Saltar lleva a añadir fuente PERO saca el tutorial de
+                        // la pila: atrás o "Explorar sin fuente" van a Home.
+                        navController.navigate(Routes.AddSource) {
+                            popUpTo(Routes.Onboarding) { inclusive = true }
+                        }
                     },
                     onAddOwnSource = { navController.navigate(Routes.AddSource) },
                     onDone = {
@@ -172,16 +175,23 @@ private fun AppNavigation(
                 )
             }
             composable(Routes.AddSource) {
+                // Raíz de la pila = venimos de "Saltar": el gesto/flecha de
+                // atrás no cierra la app ni vuelve al tutorial, va a Home.
+                // popUpTo(0) y no startDestination: en instalación nueva el
+                // inicio era Onboarding y ya salió de la pila al saltar — sin
+                // nada que hacer pop, Home quedaría apilado sobre AddSource.
+                val isRoot = navController.previousBackStackEntry == null
+                val goHome: () -> Unit = {
+                    onOnboardingComplete()
+                    navController.navigate(Routes.Home) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+                if (isRoot) BackHandler { goHome() }
                 AddSourceScreen(
-                    onDone = {
-                        onOnboardingComplete()
-                        navController.navigate(Routes.Home) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                inclusive = true
-                            }
-                        }
-                    },
-                    onBack = { navController.popBackStack() },
+                    onDone = goHome,
+                    onBack = { if (!navController.popBackStack()) goHome() },
+                    onExplore = if (isRoot) goHome else null,
                 )
             }
             composable(Routes.Home) {

@@ -11,12 +11,15 @@
     <string name="onboarding_own_source">Tengo mi lista o cuenta</string>
     <string name="onboarding_done_title">¡Listo!</string>
     <string name="onboarding_done_body">Ya tienes canales para probar. Toca cualquiera para verlo: marca favoritos con la estrella y cambia de canal con los botones de zapping.</string>
+    <string name="onboarding_done_body_empty">Puedes recorrer toda la app. Cuando quieras, añade tu lista o tu cuenta desde Ajustes → Fuentes.</string>
     <string name="onboarding_watch">Ver canales</string>
+    <string name="onboarding_explore">Explorar la app</string>
     <string name="settings_tutorial">Ver tutorial de nuevo</string>
 
     <!-- Alta de fuente -->
     <string name="source_add_title">Añadir fuente</string>
     <string name="source_back">Volver</string>
+    <string name="source_explore_without">Explorar sin fuente</string>
     <string name="source_tab_m3u">Lista (M3U)</string>
     <string name="source_tab_xtream">Cuenta</string>
     <string name="source_field_name">Nombre (opcional)</string>

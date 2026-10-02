@@ -1,5 +1,6 @@
 package com.iptv.feature.series.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -134,13 +136,25 @@ private fun SeriesContent(
     onToggleDownload: (SeriesEpisode) -> Unit,
 ) {
     val selected = details.seasons.firstOrNull { it.number == selectedSeason }
+    // En horizontal el 16:9 sobre el ancho supera la altura de pantalla:
+    // se fija una altura explícita del 55 % (sin aspectRatio, que mediría
+    // alto=ancho·9/16 antes de poder acotarlo).
+    val isLandscape =
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val bannerModifier = if (isLandscape) {
+        Modifier
+            .fillMaxWidth()
+            .height(LocalConfiguration.current.screenHeightDp.dp * 0.55f)
+    } else {
+        Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+    }
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             IptvAsyncImage(
                 model = details.coverUrl,
                 contentDescription = stringResource(R.string.series_cover_description, details.title),
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+                modifier = bannerModifier,
             )
             Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                 Text(details.title, color = Color.White, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)

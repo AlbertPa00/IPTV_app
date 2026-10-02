@@ -1,5 +1,6 @@
 package com.iptv.feature.catalog.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -122,7 +124,19 @@ private fun DetailsContent(
     val info = state.info
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+        // En horizontal el 16:9 sobre el ancho supera la altura de pantalla:
+        // altura explícita del 55 % (sin aspectRatio, que mediría alto=ancho·9/16
+        // antes de poder acotarlo).
+        val bannerModifier = if (
+            LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+        ) {
+            Modifier
+                .fillMaxWidth()
+                .height(LocalConfiguration.current.screenHeightDp.dp * 0.55f)
+        } else {
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+        }
+        Box(bannerModifier) {
             val backdrop = info?.backdropUrl ?: channel.logoUrl
             if (backdrop != null) {
                 IptvAsyncImage(

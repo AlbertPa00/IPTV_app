@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.media.AudioManager
 import android.os.Build
 import android.os.SystemClock
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.BrightnessMedium
@@ -70,6 +72,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -98,6 +102,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -184,6 +189,9 @@ fun PlayerScreen(
     var resizeMode by remember { mutableStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var sleepDialogVisible by remember { mutableStateOf(false) }
     var gestureHud by remember { mutableStateOf<GestureHud?>(null) }
+    var overflowVisible by remember { mutableStateOf(false) }
+    val isLandscape =
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     val activity = remember(context) { context.findActivity() }
     val audioManager = remember(context) { context.getSystemService(AudioManager::class.java) }
@@ -287,6 +295,14 @@ fun PlayerScreen(
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
+    }
+
+    // Girar a horizontal entra en pantalla completa solo (estilo YouTube);
+    // volver a vertical la deshace. Si el usuario sale manualmente estando
+    // horizontal no se re-impone: el efecto sólo corre al CAMBIAR la
+    // orientación. En PiP no se toca la orientación ni las barras.
+    LaunchedEffect(isLandscape) {
+        if (!isInPipMode) fullscreen = isLandscape
     }
 
     // Posición, búfer y duración para la barra de progreso en VOD.
@@ -667,114 +683,226 @@ fun PlayerScreen(
                     }
                     // Segunda fila: acciones secundarias — deja espacio real al
                     // título en pantallas estrechas (antes se aplastaba).
+                    // En horizontal los iconos secundarios se pliegan en un
+                    // menú "⋮" para no cubrir el vídeo de botones.
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        if (state.isLive && hasChannelList) {
-                            IconButton(
-                                onClick = {
-                                    controlsVisible = true
-                                    channelListVisible = !channelListVisible
-                                },
-                                modifier = Modifier.size(48.dp).clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.45f)),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.List,
-                                    contentDescription = stringResource(R.string.player_channel_list),
-                                    tint = Color.White,
-                                )
-                            }
-                            Spacer(Modifier.width(4.dp))
-                        }
-                        if (!state.isCasting) {
-                            IconButton(
-                                onClick = {
-                                    controlsVisible = true
-                                    tracksDialogVisible = true
-                                },
-                                modifier = Modifier.size(48.dp).clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.45f)),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Subtitles,
-                                    contentDescription = stringResource(R.string.player_tracks),
-                                    tint = Color.White,
-                                )
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            // Descargar para ver sin conexión (sólo VOD).
-                            if (!state.isLive) {
+                        if (!isLandscape) {
+                            if (state.isLive && hasChannelList) {
                                 IconButton(
                                     onClick = {
                                         controlsVisible = true
-                                        val d = download
-                                        if (d?.status == DownloadStatus.DONE) {
-                                            pendingDelete = d
-                                        } else {
-                                            viewModel.toggleDownload()
+                                        channelListVisible = !channelListVisible
+                                    },
+                                    modifier = Modifier.size(48.dp).clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.45f)),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.List,
+                                        contentDescription = stringResource(R.string.player_channel_list),
+                                        tint = Color.White,
+                                    )
+                                }
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            if (!state.isCasting) {
+                                IconButton(
+                                    onClick = {
+                                        controlsVisible = true
+                                        tracksDialogVisible = true
+                                    },
+                                    modifier = Modifier.size(48.dp).clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.45f)),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Subtitles,
+                                        contentDescription = stringResource(R.string.player_tracks),
+                                        tint = Color.White,
+                                    )
+                                }
+                                Spacer(Modifier.width(4.dp))
+                                // Descargar para ver sin conexión (sólo VOD).
+                                if (!state.isLive) {
+                                    IconButton(
+                                        onClick = {
+                                            controlsVisible = true
+                                            val d = download
+                                            if (d?.status == DownloadStatus.DONE) {
+                                                pendingDelete = d
+                                            } else {
+                                                viewModel.toggleDownload()
+                                            }
+                                        },
+                                        modifier = Modifier.size(48.dp).clip(CircleShape)
+                                            .background(Color.Black.copy(alpha = 0.45f)),
+                                    ) {
+                                        DownloadButtonContent(download)
+                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                }
+                                IconButton(
+                                    onClick = {
+                                        controlsVisible = true
+                                        resizeMode = when (resizeMode) {
+                                            AspectRatioFrameLayout.RESIZE_MODE_FIT ->
+                                                AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                            AspectRatioFrameLayout.RESIZE_MODE_FILL ->
+                                                AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                                         }
                                     },
                                     modifier = Modifier.size(48.dp).clip(CircleShape)
                                         .background(Color.Black.copy(alpha = 0.45f)),
                                 ) {
-                                    DownloadButtonContent(download)
+                                    Icon(
+                                        imageVector = Icons.Filled.AspectRatio,
+                                        contentDescription = stringResource(R.string.player_aspect_ratio),
+                                        tint = Color.White,
+                                    )
+                                }
+                                Spacer(Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = { activity?.enterPip() },
+                                    modifier = Modifier.size(48.dp).clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.45f)),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.PictureInPictureAlt,
+                                        contentDescription = stringResource(R.string.player_pip),
+                                        tint = Color.White,
+                                    )
                                 }
                                 Spacer(Modifier.width(4.dp))
                             }
-                            IconButton(
-                                onClick = {
-                                    controlsVisible = true
-                                    resizeMode = when (resizeMode) {
-                                        AspectRatioFrameLayout.RESIZE_MODE_FIT ->
-                                            AspectRatioFrameLayout.RESIZE_MODE_FILL
-                                        AspectRatioFrameLayout.RESIZE_MODE_FILL ->
-                                            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                                        else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                    }
-                                },
-                                modifier = Modifier.size(48.dp).clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.45f)),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.AspectRatio,
-                                    contentDescription = stringResource(R.string.player_aspect_ratio),
-                                    tint = Color.White,
-                                )
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            IconButton(
-                                onClick = { activity?.enterPip() },
-                                modifier = Modifier.size(48.dp).clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.45f)),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.PictureInPictureAlt,
-                                    contentDescription = stringResource(R.string.player_pip),
-                                    tint = Color.White,
-                                )
-                            }
-                            Spacer(Modifier.width(4.dp))
                         }
                         CastRouteButton(
                             contentDescription = stringResource(R.string.player_cast),
                             modifier = Modifier.size(48.dp),
                         )
                         Spacer(Modifier.width(4.dp))
-                        IconButton(
-                            onClick = { fullscreen = !fullscreen },
-                            modifier = Modifier.size(48.dp).clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.45f)),
-                        ) {
-                            Icon(
-                                imageVector = if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                                contentDescription = stringResource(
-                                    if (fullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
-                                ),
-                                tint = Color.White,
-                            )
+                        if (isLandscape) {
+                            Box {
+                                IconButton(
+                                    onClick = {
+                                        controlsVisible = true
+                                        overflowVisible = true
+                                    },
+                                    modifier = Modifier.size(48.dp).clip(CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.45f)),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.MoreVert,
+                                        contentDescription = stringResource(R.string.player_more),
+                                        tint = Color.White,
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = overflowVisible,
+                                    onDismissRequest = { overflowVisible = false },
+                                ) {
+                                    if (state.isLive && hasChannelList) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.player_channel_list)) },
+                                            leadingIcon = {
+                                                Icon(Icons.AutoMirrored.Filled.List, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                overflowVisible = false
+                                                controlsVisible = true
+                                                channelListVisible = !channelListVisible
+                                            },
+                                        )
+                                    }
+                                    if (!state.isCasting) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.player_tracks)) },
+                                            leadingIcon = {
+                                                Icon(Icons.Filled.Subtitles, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                overflowVisible = false
+                                                controlsVisible = true
+                                                tracksDialogVisible = true
+                                            },
+                                        )
+                                        if (!state.isLive) {
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        stringResource(
+                                                            if (download?.status == DownloadStatus.DONE) {
+                                                                R.string.player_downloaded
+                                                            } else {
+                                                                R.string.player_download
+                                                            },
+                                                        ),
+                                                    )
+                                                },
+                                                leadingIcon = {
+                                                    Box(
+                                                        modifier = Modifier.size(24.dp),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) { DownloadButtonContent(download) }
+                                                },
+                                                onClick = {
+                                                    overflowVisible = false
+                                                    controlsVisible = true
+                                                    val d = download
+                                                    if (d?.status == DownloadStatus.DONE) {
+                                                        pendingDelete = d
+                                                    } else {
+                                                        viewModel.toggleDownload()
+                                                    }
+                                                },
+                                            )
+                                        }
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.player_aspect_ratio)) },
+                                            leadingIcon = {
+                                                Icon(Icons.Filled.AspectRatio, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                overflowVisible = false
+                                                controlsVisible = true
+                                                resizeMode = when (resizeMode) {
+                                                    AspectRatioFrameLayout.RESIZE_MODE_FIT ->
+                                                        AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                                    AspectRatioFrameLayout.RESIZE_MODE_FILL ->
+                                                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                                    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                                }
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.player_pip)) },
+                                            leadingIcon = {
+                                                Icon(Icons.Filled.PictureInPictureAlt, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                overflowVisible = false
+                                                activity?.enterPip()
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            IconButton(
+                                onClick = { fullscreen = !fullscreen },
+                                modifier = Modifier.size(48.dp).clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.45f)),
+                            ) {
+                                Icon(
+                                    imageVector = if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                                    contentDescription = stringResource(
+                                        if (fullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
+                                    ),
+                                    tint = Color.White,
+                                )
+                            }
                         }
                     }
                 }
@@ -884,22 +1012,44 @@ fun PlayerScreen(
                     }
                 }
 
+                // En horizontal el botón de pantalla completa vive abajo a la
+                // derecha (estilo YouTube), fuera de la fila superior de
+                // acciones.
                 if (!state.isLive && durationMs > 0) {
-                    SeekBar(
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        bufferedFraction = (bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f),
-                        scrubFraction = scrubFraction,
-                        onScrub = { scrubFraction = it },
-                        onScrubFinished = { fraction ->
-                            player?.seekTo((fraction * durationMs).toLong())
-                            scrubFraction = null
-                        },
+                    Row(
                         modifier = Modifier.align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp)
                             .padding(bottom = 18.dp),
-                    )
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SeekBar(
+                            positionMs = positionMs,
+                            durationMs = durationMs,
+                            bufferedFraction = (bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f),
+                            scrubFraction = scrubFraction,
+                            onScrub = { scrubFraction = it },
+                            onScrubFinished = { fraction ->
+                                player?.seekTo((fraction * durationMs).toLong())
+                                scrubFraction = null
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (isLandscape) {
+                            Spacer(Modifier.width(8.dp))
+                            FullscreenToggle(fullscreen = fullscreen) {
+                                fullscreen = !fullscreen
+                            }
+                        }
+                    }
+                } else if (isLandscape) {
+                    FullscreenToggle(
+                        fullscreen = fullscreen,
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                            .padding(end = 20.dp, bottom = 20.dp),
+                    ) {
+                        fullscreen = !fullscreen
+                    }
                 }
             }
         }
@@ -1017,6 +1167,32 @@ private fun SeekBar(
             text = formatDuration(durationMs),
             color = PlayerMuted,
             style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+/** Botón redondo de entrada/salida de pantalla completa (esquina en horizontal). */
+@Composable
+private fun FullscreenToggle(
+    fullscreen: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.size(48.dp).clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.45f)),
+    ) {
+        Icon(
+            imageVector = if (fullscreen) {
+                Icons.Filled.FullscreenExit
+            } else {
+                Icons.Filled.Fullscreen
+            },
+            contentDescription = stringResource(
+                if (fullscreen) R.string.player_exit_fullscreen else R.string.player_fullscreen,
+            ),
+            tint = Color.White,
         )
     }
 }

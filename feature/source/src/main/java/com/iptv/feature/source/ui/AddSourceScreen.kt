@@ -30,6 +30,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +56,7 @@ import com.iptv.feature.source.domain.SyncStep
 fun AddSourceScreen(
     onDone: () -> Unit,
     onBack: () -> Unit,
+    onExplore: (() -> Unit)? = null,
     viewModel: AddSourceViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -256,6 +258,16 @@ fun AddSourceScreen(
                     onClick = viewModel::confirmDone,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(stringResource(R.string.source_continue)) }
+            }
+
+            // Tras "Saltar" en el tutorial no hay nada debajo en la pila: se
+            // ofrece una salida visible para recorrer la app sin fuente (se
+            // puede añadir luego desde Ajustes → Fuentes).
+            if (onExplore != null) {
+                Spacer(Modifier.height(16.dp))
+                TextButton(onClick = onExplore, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.source_explore_without))
+                }
             }
 
             Spacer(Modifier.height(32.dp))

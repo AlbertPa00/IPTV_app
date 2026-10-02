@@ -11,12 +11,15 @@
     <string name="onboarding_own_source">I have my playlist or account</string>
     <string name="onboarding_done_title">All set!</string>
     <string name="onboarding_done_body">You have channels to try. Tap any of them to watch: mark favorites with the star and switch channels with the zap buttons.</string>
+    <string name="onboarding_done_body_empty">You can explore the whole app. Whenever you like, add your playlist or account from Settings → Sources.</string>
     <string name="onboarding_watch">Watch channels</string>
+    <string name="onboarding_explore">Explore the app</string>
     <string name="settings_tutorial">View tutorial again</string>
 
     <!-- Add source -->
     <string name="source_add_title">Add source</string>
     <string name="source_back">Back</string>
+    <string name="source_explore_without">Explore without a source</string>
     <string name="source_tab_m3u">Playlist (M3U)</string>
     <string name="source_tab_xtream">Account</string>
     <string name="source_field_name">Name (optional)</string>

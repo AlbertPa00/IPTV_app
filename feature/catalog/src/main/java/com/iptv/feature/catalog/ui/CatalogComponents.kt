@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
+import android.content.res.Configuration
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -69,6 +70,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -104,61 +106,113 @@ internal fun CatalogHeader(
     searchHint: Int,
     onQueryChange: (String) -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxWidth()
-            .background(CinemaBlack)
-            .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 14.dp),
-    ) {
-        Text(
-            text = title,
-            color = Color.White,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = (-0.5).sp,
-        )
-        Text(
-            text = subtitle,
-            color = MutedText,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Spacer(Modifier.height(16.dp))
-        val keyboardController = LocalSoftwareKeyboardController.current
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            placeholder = { Text(stringResource(searchHint)) },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            trailingIcon = {
-                if (query.isNotEmpty()) {
-                    IconButton(onClick = { onQueryChange("") }) {
-                        Icon(
-                            Icons.Filled.Close,
-                            contentDescription = stringResource(R.string.catalog_clear_search),
-                            tint = MutedText,
-                        )
-                    }
-                }
-            },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
-            shape = CircleShape,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedContainerColor = Graphite,
-                unfocusedContainerColor = Graphite,
-                focusedBorderColor = Color.Transparent,
-                unfocusedBorderColor = Color.Transparent,
-                focusedLeadingIconColor = Color.White,
-                unfocusedLeadingIconColor = MutedText,
-                focusedPlaceholderColor = MutedText,
-                unfocusedPlaceholderColor = MutedText,
-                cursorColor = Carmine,
-            ),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-        )
+    // En horizontal la cabecera apilada ocupaba casi media pantalla: pasa a
+    // una fila — título compacto a la izquierda y el buscador a la derecha.
+    val isLandscape =
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    if (isLandscape) {
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .background(CinemaBlack)
+                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.padding(end = 16.dp)) {
+                Text(
+                    text = title,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = subtitle,
+                    color = MutedText,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            CatalogSearchField(
+                query = query,
+                searchHint = searchHint,
+                onQueryChange = onQueryChange,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    } else {
+        Column(
+            Modifier.fillMaxWidth()
+                .background(CinemaBlack)
+                .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 14.dp),
+        ) {
+            Text(
+                text = title,
+                color = Color.White,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.5).sp,
+            )
+            Text(
+                text = subtitle,
+                color = MutedText,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.height(16.dp))
+            CatalogSearchField(
+                query = query,
+                searchHint = searchHint,
+                onQueryChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
+}
+
+@Composable
+private fun CatalogSearchField(
+    query: String,
+    searchHint: Int,
+    onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        placeholder = { Text(stringResource(searchHint)) },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.catalog_clear_search),
+                        tint = MutedText,
+                    )
+                }
+            }
+        },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
+        shape = CircleShape,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            focusedContainerColor = Graphite,
+            unfocusedContainerColor = Graphite,
+            focusedBorderColor = Color.Transparent,
+            unfocusedBorderColor = Color.Transparent,
+            focusedLeadingIconColor = Color.White,
+            unfocusedLeadingIconColor = MutedText,
+            focusedPlaceholderColor = MutedText,
+            unfocusedPlaceholderColor = MutedText,
+            cursorColor = Carmine,
+        ),
+        modifier = modifier.heightIn(min = 52.dp),
+    )
 }
 
 @Composable
