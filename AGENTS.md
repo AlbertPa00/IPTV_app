@@ -50,3 +50,15 @@ En Linux/macOS:
 ```
 
 Los mismos comandos se ejecutan en `.github/workflows/ci.yml`.
+
+## Commits y changelog
+
+- Al hacer commit con cambios visibles para el usuario (features, UX,
+  correcciones), actualizar `CHANGELOG.md` en el mismo commit: entrada bajo
+  `Unreleased` si aún no hay versión en curso, o bajo la versión que se esté
+  preparando. Las entradas describen el cambio orientado a usuario.
+- Al preparar una release para Play: bump de `versionCode`/`versionName` en
+  `app/build.gradle.kts`, mover las entradas de `Unreleased` a la nueva
+  versión con su fecha, y generar el AAB firmado con
+  `.\gradlew.bat :app:bundleRelease` (firma vía `keystore.properties`,
+  fuera del repo).
