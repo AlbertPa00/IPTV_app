@@ -56,6 +56,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // ffmpeg-kit/media3-ffmpeg traen .so: los símbolos nativos se
+            // empaquetan dentro del AAB y Play los usa para desofuscar
+            // crashes/ANRs sin subir el zip de símbolos aparte.
+            ndk { debugSymbolLevel = "FULL" }
             signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }

@@ -5,6 +5,13 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 
 ## [Unreleased]
 
+### Otras
+
+- Configurado `debugSymbolLevel=FULL` en release: los símbolos nativos se
+  empaquetan dentro del AAB cuando las librerías los incluyen (el aviso de
+  Play sobre código nativo sin símbolos proviene de ffmpeg-kit, que ya
+  distribuye sus `.so` despojados).
+
 ## [1.2.0] - 2026-02-10
 
 ### Añadido
