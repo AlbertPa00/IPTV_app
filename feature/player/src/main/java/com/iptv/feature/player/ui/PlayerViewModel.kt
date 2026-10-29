@@ -8,11 +8,8 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.media3.cast.RemoteCastPlayer
-import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
@@ -23,12 +20,6 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
-import com.google.android.gms.cast.Cast
-import com.google.android.gms.cast.MediaError
-import com.google.android.gms.cast.framework.CastContext
-import com.google.android.gms.cast.framework.CastSession
-import com.google.android.gms.cast.framework.SessionManagerListener
-import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.iptv.core.common.download.DownloadController
 import com.iptv.core.common.pip.PipController
 import com.iptv.core.network.DEFAULT_USER_AGENT
@@ -44,10 +35,10 @@ import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.core.storage.entity.Kinds
 import com.iptv.core.storage.entity.PlaybackHistoryEntity
 import com.iptv.feature.player.R
-import com.iptv.feature.player.cast.CastMediaDecisions
-import com.iptv.feature.player.cast.CastPlayerRuntime
-import com.iptv.feature.player.cast.CastProxyRuntime
+import com.iptv.feature.player.cast.CastEvent
+import com.iptv.feature.player.cast.CastPlaybackController
 import com.iptv.feature.player.cast.CastStreamProber
+import com.iptv.feature.player.cast.CastStreamSpec
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -116,15 +107,13 @@ class PlayerViewModel @Inject constructor(
     val player: StateFlow<Player?> = _player.asStateFlow()
 
     private var localPlayer: ExoPlayer? = null
-    private var castPlayer: RemoteCastPlayer? = null
     private var mediaSession: MediaSession? = null
-    private var castContext: CastContext? = null
     private var mediaItem: MediaItem? = null
-    private var observedMediaClient: RemoteMediaClient? = null
     private var castUserAgent: String = DEFAULT_USER_AGENT
     private var castReferrer: String? = null
-    private var castTransferPending = false
-    private var castTransferPlayWhenReady = false
+
+    /** Orquestación Cast (sesión, proxy, transferencia local↔remoto). */
+    private val castController = CastPlaybackController(appContext)
 
     /**
      * URL remota del item en reproducción. Cuando el media local es un
@@ -132,12 +121,6 @@ class PlayerViewModel @Inject constructor(
      * URL http original.
      */
     private var remoteUrl: String? = null
-
-    /** HLS wrap mode of the in-flight/current cast item ("r", "t", "n"). */
-    private var activeCastHlsMode: String? = null
-
-    /** One-shot guard: remux failures retry once with audio transcode. */
-    private var transcodeEscalated = false
 
     /** One-shot guard: format errors retry once with a sniffed MIME. */
     private var mimeRetried = false
@@ -162,41 +145,17 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    private val _castVolume = MutableStateFlow(1f)
-    val castVolume: StateFlow<Float> = _castVolume.asStateFlow()
-    private val _castMuted = MutableStateFlow(false)
-    val castMuted: StateFlow<Boolean> = _castMuted.asStateFlow()
-
-    private var observedCastSession: CastSession? = null
-    private val castDeviceListener = object : Cast.Listener() {
-        override fun onVolumeChanged() = refreshCastVolume()
-    }
+    val castVolume = castController.volume
+    val castMuted = castController.muted
 
     val isInPipMode: StateFlow<Boolean> = pipController.isInPipMode
 
     /** Volumen actual del receptor Cast (0..1) y silencio. */
-    fun refreshCastVolume() {
-        val session = runCatching {
-            castContext?.sessionManager?.currentCastSession
-        }.getOrNull() ?: return
-        _castVolume.value = session.volume.toFloat().coerceIn(0f, 1f)
-        _castMuted.value = session.isMute
-    }
+    fun refreshCastVolume() = castController.refreshCastVolume()
 
-    fun setCastVolume(volume: Float) {
-        val v = volume.coerceIn(0f, 1f)
-        _castVolume.value = v
-        runCatching {
-            castContext?.sessionManager?.currentCastSession?.setVolume(v.toDouble())
-        }
-    }
+    fun setCastVolume(volume: Float) = castController.setVolume(volume)
 
-    fun setCastMuted(muted: Boolean) {
-        _castMuted.value = muted
-        runCatching {
-            castContext?.sessionManager?.currentCastSession?.setMute(muted)
-        }
-    }
+    fun setCastMuted(muted: Boolean) = castController.setMuted(muted)
 
     /** Activa/desactiva la entrada automática a PiP al salir con Home. */
     fun setPipAutoEnter(enabled: Boolean) {
@@ -367,7 +326,7 @@ class PlayerViewModel @Inject constructor(
      * el llamador muestra entonces el error.
      */
     private fun scheduleReconnect(): Boolean {
-        if (_uiState.value.isCasting || castTransferPending) return false
+        if (_uiState.value.isCasting || castController.uiState.value.transferPending) return false
         val attempt = reconnectAttempts + 1
         val unlimited = _uiState.value.isLive && prefs.isLiveReconnectContinuous()
         if (!unlimited && attempt > PlaybackResilience.MAX_RECONNECT_ATTEMPTS) return false
@@ -470,104 +429,57 @@ class PlayerViewModel @Inject constructor(
             .onSuccess { networkCallback = callback }
     }
 
-    private val castListener = object : Player.Listener {
-        override fun onPlaybackStateChanged(playbackState: Int) {
-            Log.d(TAG, "Cast playback state: $playbackState (pending=$castTransferPending)")
-            if (castTransferPending && playbackState == Player.STATE_READY) {
-                completeCastTransfer()
-            }
-        }
-
-        override fun onPlayerError(error: PlaybackException) {
-            Log.e(TAG, "Cast player error: ${error.errorCode} ${error.message}", error)
-            // A remuxed TS stream failing usually means the receiver can't
-            // decode the audio (MP2/AC3) — retry once with audio→AAC
-            // transcode before giving up.
-            if (activeCastHlsMode == "r" && !transcodeEscalated) {
-                transcodeEscalated = true
-                castTransferPending = true
-                Log.w(TAG, "Retrying cast with audio transcode")
-                viewModelScope.launch {
-                    mediaItem?.let { applyCastItem(it, 0L, playWhenReady = true, hlsModeOverride = "t") }
-                }
-                return
-            }
-            val wasCasting = _uiState.value.isCasting
-            val resumePlayback = if (wasCasting) {
-                castPlayer?.playWhenReady == true
-            } else {
-                castTransferPlayWhenReady
-            }
-            castTransferPending = false
-            CastProxyRuntime.stop(appContext)
-            if (wasCasting) {
-                val remote = castPlayer
-                val local = localPlayer
-                if (remote != null && local != null) transferPlayback(remote, local)
-            }
-            restoreLocalPlayback(resumePlayback)
-            _uiState.update {
-                it.copy(
-                    errorRes = R.string.player_error_cast_format,
-                    showReturnToMobile = true,
-                )
-            }
-        }
-    }
-
-    private val sessionAvailabilityListener = object : SessionAvailabilityListener {
-        override fun onCastSessionAvailable() = startCasting()
-        override fun onCastSessionUnavailable() = stopCasting()
-    }
-
-    /**
-     * Marca "conectando" desde que el usuario elige el dispositivo: entre la
-     * selección de ruta y la carga confirmada en el receptor pueden pasar
-     * varios segundos y sin este estado la app no da señal de estar emitiendo.
-     */
-    private val castSessionListener = object : SessionManagerListener<CastSession> {
-        override fun onSessionStarting(session: CastSession) = markCastConnecting(session)
-        override fun onSessionResuming(session: CastSession, sessionId: String) =
-            markCastConnecting(session)
-        override fun onSessionStarted(session: CastSession, sessionId: String) {}
-        override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {}
-        override fun onSessionEnding(session: CastSession) {}
-        override fun onSessionEnded(session: CastSession, error: Int) {
-            _uiState.update { it.copy(isCastConnecting = false) }
-        }
-        override fun onSessionSuspended(session: CastSession, reason: Int) {
-            _uiState.update { it.copy(isCastConnecting = false) }
-        }
-        override fun onSessionStartFailed(session: CastSession, error: Int) {
-            _uiState.update { it.copy(isCastConnecting = false, castDeviceName = null) }
-        }
-        override fun onSessionResumeFailed(session: CastSession, error: Int) {
-            _uiState.update { it.copy(isCastConnecting = false, castDeviceName = null) }
-        }
-    }
-
-    private fun markCastConnecting(session: CastSession) {
-        _uiState.update {
-            it.copy(
-                isCastConnecting = true,
-                castDeviceName = session.castDevice?.friendlyName ?: it.castDeviceName,
-            )
-        }
-    }
-
-    private val receiverErrorCallback = object : RemoteMediaClient.Callback() {
-        override fun onMediaError(mediaError: MediaError) {
-            val detail = buildString {
-                append(mediaError.type ?: "LOAD_FAILED")
-                mediaError.detailedErrorCode?.let { append(" · code ").append(it) }
-                mediaError.reason?.takeIf { it.isNotBlank() }?.let { append(" · ").append(it) }
-            }
-            Log.e(TAG, "Receiver media error: $detail")
-            _uiState.update { it.copy(castErrorDetail = detail) }
-        }
-    }
-
     init {
+        // El controller publica el estado de la sesión Cast; el VM lo pliega
+        // en su UiState para que la pantalla no conozca la frontera.
+        viewModelScope.launch {
+            castController.uiState.collect { s ->
+                _uiState.update {
+                    it.copy(
+                        castButtonAvailable = s.available,
+                        castAvailable = s.available,
+                        isCastConnecting = s.connecting || s.transferPending,
+                        isCasting = s.casting,
+                        castDeviceName = s.deviceName,
+                        castErrorDetail = s.receiverError,
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            castController.events.collect { event ->
+                when (event) {
+                    CastEvent.RemoteActive -> {
+                        localPlayer?.pause()
+                        castController.remotePlayer?.let { remote ->
+                            _player.value = remote
+                            mediaSession?.player = remote
+                        }
+                        _uiState.update {
+                            it.copy(errorRes = null, showReturnToMobile = false)
+                        }
+                    }
+                    is CastEvent.LocalResume -> {
+                        val remote = castController.remotePlayer
+                        val local = localPlayer
+                        if (event.transferFromRemote && remote != null && local != null) {
+                            transferPlayback(remote, local)
+                        }
+                        restoreLocalPlayback(
+                            event.playWhenReady ?: localPlayer?.playWhenReady == true,
+                        )
+                        if (event.showError) {
+                            _uiState.update {
+                                it.copy(
+                                    errorRes = R.string.player_error_cast_format,
+                                    showReturnToMobile = true,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
         viewModelScope.launch { loadChannel() }
     }
 
@@ -670,8 +582,30 @@ class PlayerViewModel @Inject constructor(
             }
         }
 
-        initializeCastSafely()
+        // El player remoto vive en el controller (ámbito de proceso); si ya
+        // hay sesión activa se transfiere la reproducción en curso.
+        castController.attach(newLocalPlayer)
+        mediaSession?.let { castController.setMediaSession(it) }
+        castController.setZapHandler { delta -> playAdjacent(delta) }
+        if (castController.isSessionAvailable) {
+            viewModelScope.launch {
+                castController.transferToCast(
+                    item,
+                    newLocalPlayer.currentPosition.coerceAtLeast(0L),
+                    newLocalPlayer.playWhenReady,
+                    castSpec(channel),
+                )
+            }
+        }
     }
+
+    /** Spec del stream remoto (URL + cabeceras) que el receptor debe cargar. */
+    private fun castSpec(channel: ChannelEntity) = CastStreamSpec(
+        remoteUrl = remoteUrl ?: channel.streamUrl,
+        userAgent = castUserAgent,
+        referrer = castReferrer,
+        channelTitle = channel.name,
+    )
 
     private suspend fun resumePosition(channelId: Long): Long =
         playbackHistoryDao.find(channelId)?.let { entry ->
@@ -701,16 +635,13 @@ class PlayerViewModel @Inject constructor(
             ?: return
         channelId = id
         downloadChannelId.value = id
-        transcodeEscalated = false
         mimeRetried = false
-        activeCastHlsMode = null
         // El canal nuevo arranca su propio vigía y su propia reconexión,
         // sin heredar ni el tiempo ni los intentos del anterior.
         bufferingWatchdog?.cancel()
         bufferingWatchdog = null
         stopReconnect()
         reconnectAttempts = 0
-        CastProxyRuntime.channelTitle = channel.name
         val isLive = channel.kind == Kinds.LIVE
         _uiState.update {
             it.copy(
@@ -731,7 +662,7 @@ class PlayerViewModel @Inject constructor(
             if (!_uiState.value.isCasting) local.playWhenReady = true
         }
         if (_uiState.value.isCasting) {
-            applyCastItem(item, positionMs = 0L, playWhenReady = true)
+            castController.loadOnRemote(item, castSpec(channel))
         }
     }
 
@@ -783,214 +714,7 @@ class PlayerViewModel @Inject constructor(
 
 
 
-    private fun initializeCastSafely() {
-        // El CastPlayer es de proceso (CastPlayerRuntime): sobrevive a esta
-        // pantalla para que emitir no muera al navegar hacia atrás.
-        val createdPlayer = CastPlayerRuntime.castPlayer(appContext)
-        if (createdPlayer == null) {
-            castPlayer = null
-            castContext = null
-            _uiState.update { it.copy(castButtonAvailable = false, castAvailable = false) }
-            return
-        }
-        castContext = CastPlayerRuntime.castContext()
-        castPlayer = createdPlayer
-        createdPlayer.addListener(castListener)
-        createdPlayer.setSessionAvailabilityListener(sessionAvailabilityListener)
-        castContext?.sessionManager?.addSessionManagerListener(
-            castSessionListener, CastSession::class.java,
-        )
-        _uiState.update { it.copy(castButtonAvailable = true, castAvailable = true) }
-        if (createdPlayer.isCastSessionAvailable) startCasting()
-    }
 
-    private fun startCasting() {
-        val local = localPlayer ?: return
-        val remote = castPlayer ?: return
-        val item = mediaItem ?: return
-        if (_uiState.value.isCasting || castTransferPending) return
-        castTransferPlayWhenReady = local.playWhenReady
-        castTransferPending = true
-        _uiState.update { it.copy(isCastConnecting = true) }
-
-        observeReceiverErrors()
-        publishCastExtras()
-
-        // Re-entering the player while a cast is already running: adopt the
-        // session instead of reloading the stream on the TV — but only when
-        // the receiver is on THIS stream; a different channel loads fresh.
-        val remoteState = runCatching {
-            castContext?.sessionManager?.currentCastSession
-                ?.remoteMediaClient?.mediaStatus?.playerState
-        }.getOrNull()
-        if (CastMediaDecisions.shouldAdoptRemotePlayback(
-                remoteState,
-                CastPlayerRuntime.loadedStreamUri,
-                item.localConfiguration?.uri?.toString(),
-            )
-        ) {
-            castTransferPending = false
-            local.pause()
-            _player.value = remote
-            mediaSession?.player = remote
-            _uiState.update {
-                it.copy(
-                    isCasting = true,
-                    isCastConnecting = false,
-                    castDeviceName = castContext?.sessionManager
-                        ?.currentCastSession?.castDevice?.friendlyName,
-                    errorRes = null,
-                    showReturnToMobile = false,
-                )
-            }
-            return
-        }
-
-        viewModelScope.launch {
-            applyCastItem(
-                item,
-                positionMs = local.currentPosition.coerceAtLeast(0L),
-                playWhenReady = castTransferPlayWhenReady,
-            )
-        }
-    }
-
-    /**
-     * Carga [item] en el receptor Cast: sondea el payload real para decidir la
-     * URL y el MIME (los paneles IPTV mienten por extensión y Content-Type),
-     * y lo sirve a través del proxy local de sesión.
-     */
-    private suspend fun applyCastItem(
-        item: MediaItem,
-        positionMs: Long,
-        playWhenReady: Boolean,
-        hlsModeOverride: String? = null,
-    ) {
-        val remote = castPlayer ?: return
-        // La URL que sale al receptor es siempre la remota del canal: cuando
-        // el item local es un fichero descargado (file://) el mediaItem no la
-        // lleva.
-        val originalUrl = remoteUrl
-            ?: item.localConfiguration?.uri?.toString() ?: return
-        val isLive = item.liveConfiguration != MediaItem.LiveConfiguration.UNSET
-        val target = withContext(Dispatchers.IO) {
-            resolveCastTarget(originalUrl, isLive, hlsModeOverride)
-        }
-        if (castPlayer?.isCastSessionAvailable != true) return
-
-        val remoteAddress = runCatching {
-            castContext?.sessionManager?.currentCastSession?.castDevice?.inetAddress
-        }.getOrNull()
-        val proxy = CastProxyRuntime.ensureStarted(
-            appContext, castUserAgent, castReferrer, remoteAddress,
-        )
-        val proxiedUrl = when {
-            proxy == null -> target.url
-            target.hlsMode != null -> proxy.hlsUrl(target.url, target.hlsMode)
-            else -> proxy.proxyUrl(target.url)
-        }
-        activeCastHlsMode = target.hlsMode
-        Log.d(TAG, "Cast URL: $proxiedUrl (${target.mimeType}, mode=${target.hlsMode})")
-
-        val castItem = item.buildUpon()
-            .setUri(proxiedUrl)
-            .setMimeType(target.mimeType)
-            .build()
-
-        runCatching {
-            remote.playWhenReady = playWhenReady
-            remote.setMediaItem(castItem, positionMs)
-            remote.prepare()
-        }.onSuccess {
-            CastPlayerRuntime.markLoaded(originalUrl)
-        }.onFailure { e ->
-            // La marca del receptor no se toca: si la carga falla el receptor
-            // puede seguir con el item anterior, que es lo que refleja.
-            Log.e(TAG, "applyCastItem failed", e)
-            castTransferPending = false
-            CastProxyRuntime.stop(appContext)
-            restoreLocalPlayback()
-        }
-    }
-
-    /** [hlsMode]: null = direct proxy; "r" = ffmpeg remux to HLS;
-     *  "t" = ffmpeg remux with audio→AAC transcode; "n" = in-memory cutter.
-     *  The receiver can't play progressive video/mp2t — live TS needs HLS. */
-    private data class CastTarget(val url: String, val mimeType: String, val hlsMode: String?)
-
-    /**
-     * Resolves the URL and MIME type to hand to the receiver. For Xtream live
-     * streams the `.m3u8` variant is tried first (real HLS), falling back to
-     * the original URL when the panel serves TS at that URL or doesn't
-     * support HLS output at all. Raw TS streams are wrapped in synthetic HLS
-     * because the Default Media Receiver rejects progressive video/mp2t.
-     */
-    private fun resolveCastTarget(
-        originalUrl: String,
-        isLive: Boolean,
-        hlsModeOverride: String? = null,
-    ): CastTarget {
-        val hlsVariant = CastMediaDecisions.preferHlsForLive(originalUrl, isLive)
-        val candidates = if (hlsVariant == originalUrl) {
-            listOf(originalUrl)
-        } else {
-            listOf(hlsVariant, originalUrl)
-        }
-        for (url in candidates) {
-            val kind = CastStreamProber.probe(url, castUserAgent, castReferrer)
-            Log.d(TAG, "Probe $url -> $kind")
-            val target = when (kind) {
-                CastStreamProber.Kind.HLS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, null)
-                // Raw TS live → remux to HLS through ffmpeg (keyframe-aligned
-                // segments, far more reliable than naive packet cuts).
-                CastStreamProber.Kind.TS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, hlsModeOverride ?: "r")
-                CastStreamProber.Kind.MP4 -> CastTarget(url, MimeTypes.VIDEO_MP4, null)
-                CastStreamProber.Kind.DASH -> CastTarget(url, MimeTypes.APPLICATION_MPD, null)
-                CastStreamProber.Kind.UNKNOWN -> null
-            }
-            if (target != null) return target
-        }
-        val url = candidates.first()
-        val mime = CastMediaDecisions.mimeTypeForCast(url, isLive)
-        // A live TS fallback still needs the HLS wrapper to play at all.
-        val needsWrap = mime == MimeTypes.VIDEO_MP2T && isLive
-        return CastTarget(
-            url,
-            if (needsWrap) MimeTypes.APPLICATION_M3U8 else mime,
-            if (needsWrap) hlsModeOverride ?: "r" else null,
-        )
-    }
-
-    private fun completeCastTransfer() {
-        if (!castTransferPending || castPlayer?.isCastSessionAvailable != true) return
-        val local = localPlayer ?: return
-        val remote = castPlayer ?: return
-        castTransferPending = false
-        local.pause()
-        _player.value = remote
-        mediaSession?.player = remote
-        _uiState.update {
-            it.copy(
-                isCasting = true,
-                isCastConnecting = false,
-                castDeviceName = castContext?.sessionManager?.currentCastSession?.castDevice?.friendlyName,
-                errorRes = null,
-                showReturnToMobile = false,
-            )
-        }
-    }
-
-    private fun stopCasting() {
-        castTransferPending = false
-        CastPlayerRuntime.clearLoaded()
-        if (_uiState.value.isCasting) {
-            val remote = castPlayer
-            val local = localPlayer
-            if (remote != null && local != null) transferPlayback(remote, local)
-        }
-        CastProxyRuntime.stop(appContext)
-        restoreLocalPlayback()
-    }
 
     private fun restoreLocalPlayback(playWhenReady: Boolean = localPlayer?.playWhenReady == true) {
         val local = localPlayer ?: return
@@ -1019,37 +743,13 @@ class PlayerViewModel @Inject constructor(
         true
     }.getOrDefault(false)
 
-    /** Shares channel info and zap control with the proxy service's
-     *  media notification so casting can be controlled in background. */
-    private fun publishCastExtras() {
-        CastProxyRuntime.channelTitle = _uiState.value.channel?.name
-        CastProxyRuntime.mediaSession = mediaSession
-        CastProxyRuntime.onZap = { delta -> playAdjacent(delta) }
-    }
 
-    private fun observeReceiverErrors() {
-        val session = runCatching {
-            castContext?.sessionManager?.currentCastSession
-        }.getOrNull() ?: return
-        if (observedCastSession !== session) {
-            observedCastSession?.removeCastListener(castDeviceListener)
-            session.addCastListener(castDeviceListener)
-            observedCastSession = session
-        }
-        refreshCastVolume()
-        val client = session.remoteMediaClient ?: return
-        if (observedMediaClient !== client) {
-            observedMediaClient?.unregisterCallback(receiverErrorCallback)
-            client.registerCallback(receiverErrorCallback)
-            observedMediaClient = client
-        }
-    }
 
     /** Recarga el MediaItem local: el player puede quedar en BUFFERING o IDLE
      *  tras un fallo y prepare() solo no reintenta una carga en curso. En
      *  directo se vuelve al borde vivo; en VOD se conserva la posición. */
     private fun retryLocalPlayback() {
-        if (_uiState.value.isCasting || castTransferPending) return
+        if (_uiState.value.isCasting || castController.uiState.value.transferPending) return
         val player = localPlayer ?: return
         val item = mediaItem ?: return
         val startAt = if (_uiState.value.isLive) {
@@ -1066,6 +766,7 @@ class PlayerViewModel @Inject constructor(
         reconnectJob?.cancel()
         reconnectJob = null
         reconnectAttempts = 0
+        castController.clearReceiverError()
         _uiState.update {
             it.copy(
                 errorRes = null,
@@ -1084,8 +785,8 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun returnToMobile() {
-        stopCasting()
-        runCatching { castContext?.sessionManager?.endCurrentSession(true) }
+        castController.endSession()
+        _uiState.update { it.copy(showReturnToMobile = false) }
     }
 
     @StringRes
@@ -1139,27 +840,13 @@ class PlayerViewModel @Inject constructor(
         }
         networkCallback = null
         pipController.autoEnterOnUserLeave = false
-        // Zap buttons live with the ViewModel; title/session stay for the
-        // notification until the cast session itself ends.
-        CastProxyRuntime.onZap = null
-
-        // The proxy is session-scoped (CastProxyRuntime + CastProxyService):
-        // if a Cast session is still alive it must keep running, and the
-        // service tears it down when the session ends.
+        // El CastPlayer y la sesión son de proceso: detach() sólo suelta los
+        // listeners de esta pantalla; emitir sigue vivo al salir y el proxy
+        // lo desmonta el servicio cuando la sesión termina.
+        castController.setMediaSession(null)
         mediaSession?.release()
         mediaSession = null
-        observedMediaClient?.unregisterCallback(receiverErrorCallback)
-        observedMediaClient = null
-        observedCastSession?.removeCastListener(castDeviceListener)
-        observedCastSession = null
-        castPlayer?.setSessionAvailabilityListener(null)
-        castPlayer?.removeListener(castListener)
-        castContext?.sessionManager?.removeSessionManagerListener(
-            castSessionListener, CastSession::class.java,
-        )
-        // El CastPlayer es de proceso (CastPlayerRuntime): release() cerraría
-        // la sesión Cast, que debe seguir viva al salir de esta pantalla.
-        castPlayer = null
+        castController.detach()
         localPlayer?.removeListener(localListener)
         localPlayer?.release()
         localPlayer = null
