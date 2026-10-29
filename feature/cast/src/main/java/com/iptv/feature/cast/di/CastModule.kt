@@ -9,7 +9,7 @@ import dagger.hilt.components.SingletonComponent
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class CastModule {
+internal abstract class CastModule {
     /**
      * Sin scope: cada consumidor (p. ej. el ViewModel del player) recibe su
      * propia instancia ligada a su ciclo de vida vía attach/detach. La sesión

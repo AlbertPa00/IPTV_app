@@ -44,7 +44,7 @@ import okhttp3.OkHttpClient
  * Sin scope: una instancia por consumidor (pantalla del player).
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class CastPlaybackController @Inject constructor(
+internal class CastPlaybackController @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val okHttpClient: OkHttpClient,
 ) : CastController {

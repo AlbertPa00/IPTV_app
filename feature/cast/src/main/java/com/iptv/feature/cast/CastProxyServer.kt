@@ -144,7 +144,7 @@ private class ProxyServer(
     private val advertisedHost: String,
     private val workDir: java.io.File,
     private val secret: String,
-    baseClient: OkHttpClient,
+    private val baseClient: OkHttpClient,
 ) : NanoHTTPD(port) {
 
     // Streaming client: infinite read timeout so live segments and VOD
@@ -165,7 +165,6 @@ private class ProxyServer(
         .followRedirects(true)
         .build()
 
-    private val upstreamClient = baseClient
     private val hlsSessions = java.util.concurrent.ConcurrentHashMap<String, LiveHlsSource>()
 
     fun shutdownSessions() {
@@ -252,7 +251,7 @@ private class ProxyServer(
                 workDir = java.io.File(workDir, "hls_" + token.hashCode().toString(16)),
                 transcodeAudio = mode == 't',
             )
-            else -> LiveTsHlsSession(targetUrl, userAgent, referrer, upstreamClient)
+            else -> LiveTsHlsSession(targetUrl, userAgent, referrer, baseClient)
         }
 
     private fun serveHlsSegment(path: String): Response {

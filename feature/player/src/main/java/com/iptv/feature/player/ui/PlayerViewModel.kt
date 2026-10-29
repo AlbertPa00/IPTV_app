@@ -361,8 +361,11 @@ class PlayerViewModel @Inject constructor(
      * revela el propio payload. Sin coste cuando el servidor es honesto.
      */
     private fun sniffRetry(error: PlaybackException): Boolean {
-        if (mimeRetried ||
-            mediaItem?.localConfiguration?.uri?.scheme == "file" ||
+        val item = mediaItem
+        val url = remoteUrl
+        val channel = _uiState.value.channel
+        if (item == null || url == null || channel == null || mimeRetried ||
+            item.localConfiguration?.uri?.scheme == "file" ||
             (error.errorCode != PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED &&
                 error.errorCode != PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)
         ) {
@@ -370,14 +373,15 @@ class PlayerViewModel @Inject constructor(
         }
         mimeRetried = true
         viewModelScope.launch {
-            val url = remoteUrl ?: return@launch
-            val channel = _uiState.value.channel ?: return@launch
             val (ua, ref) = headersFor(channel)
             val mime = withContext(Dispatchers.IO) {
                 StreamProber.probe(okHttpClient, url, ua, ref).mimeType
             } ?: return@launch
+            // El usuario pudo zapear durante el sondeo: el MIME sólo se
+            // aplica si el item en reproducción sigue siendo el que falló.
+            if (mediaItem !== item) return@launch
             Log.w(TAG, "Retrying playback with sniffed mime $mime")
-            mediaItem = mediaItem?.buildUpon()?.setMimeType(mime)?.build()
+            mediaItem = item.buildUpon().setMimeType(mime).build()
             retryLocalPlayback()
         }
         return true

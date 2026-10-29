@@ -47,8 +47,12 @@ object StreamProber {
         val key = Triple(url, userAgent, referrer.orEmpty())
         return cache[key] ?: doProbe(client, url, userAgent, referrer).also { kind ->
             // UNKNOWN suele ser fallo transitorio (timeout, red caída): no se
-            // cachea para que el próximo intento sondee de verdad.
-            if (kind != Kind.UNKNOWN) cache[key] = kind
+            // cachea para que el próximo intento sondee de verdad. Techo: una
+            // lista de 50k canales no puede inflar el mapa sin fin.
+            if (kind != Kind.UNKNOWN) {
+                if (cache.size >= MAX_CACHE) cache.clear()
+                cache[key] = kind
+            }
         }
     }
 
@@ -134,4 +138,5 @@ object StreamProber {
     }
 
     private const val TAG = "StreamProber"
+    private const val MAX_CACHE = 512
 }
