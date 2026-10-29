@@ -13,6 +13,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -34,6 +35,7 @@ import com.iptv.core.storage.entity.DownloadSections
 import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.core.storage.entity.Kinds
 import com.iptv.core.storage.entity.PlaybackHistoryEntity
+import com.iptv.core.storage.entity.SourceEntity
 import com.iptv.core.common.cast.CastController
 import com.iptv.core.common.cast.CastEvent
 import com.iptv.core.common.cast.CastStreamSpec
@@ -110,8 +112,13 @@ class PlayerViewModel @Inject constructor(
     private var localPlayer: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
     private var mediaItem: MediaItem? = null
-    private var castUserAgent: String = DEFAULT_USER_AGENT
-    private var castReferrer: String? = null
+    /**
+     * Cabeceras HTTP del canal en reproducción (UA/Referer). El
+     * ResolvingDataSource las aplica a cada petición — también a los
+     * segmentos HLS, cuya URI no es la del item — así un zap a un canal con
+     * #EXTVLCOPT propio no hereda las del anterior.
+     */
+    @Volatile private var currentRequestHeaders: Map<String, String> = emptyMap()
 
     /**
      * URL remota del item en reproducción. Cuando el media local es un
@@ -364,8 +371,10 @@ class PlayerViewModel @Inject constructor(
         mimeRetried = true
         viewModelScope.launch {
             val url = remoteUrl ?: return@launch
+            val channel = _uiState.value.channel ?: return@launch
+            val (ua, ref) = headersFor(channel)
             val mime = withContext(Dispatchers.IO) {
-                StreamProber.probe(url, castUserAgent, castReferrer).mimeType
+                StreamProber.probe(url, ua, ref).mimeType
             } ?: return@launch
             Log.w(TAG, "Retrying playback with sniffed mime $mime")
             mediaItem = mediaItem?.buildUpon()?.setMimeType(mime)?.build()
@@ -502,20 +511,18 @@ class PlayerViewModel @Inject constructor(
         val source = sourceDao.findById(channel.sourceId)
 
         // Prioridad: cabeceras propias del canal (#EXTVLCOPT) > las de la fuente.
-        val userAgent = channel.userAgent?.takeIf { it.isNotBlank() }
-            ?: source?.userAgent ?: DEFAULT_USER_AGENT
-        val referrer = channel.referrer?.takeIf { it.isNotBlank() }
-            ?: source?.referrer?.takeIf { it.isNotBlank() }
-        castUserAgent = userAgent
-        castReferrer = referrer
+        val (userAgent, referrer) = headersFor(channel, source)
+        currentRequestHeaders = requestHeaders(userAgent, referrer)
 
         // OkHttpDataSource comparte el pool del cliente inyectado: el zapping
         // reutiliza la conexión al mismo host en vez de rehacer TCP+TLS.
-        val httpFactory = OkHttpDataSource.Factory(okHttpClient)
-            .setDefaultRequestProperties(buildMap {
-                put("User-Agent", userAgent)
-                referrer?.let { put("Referer", it) }
-            })
+        // ResolvingDataSource lee currentRequestHeaders por petición — las
+        // default properties de la fábrica quedarían fijas para el canal A.
+        val httpFactory = ResolvingDataSource.Factory(
+            OkHttpDataSource.Factory(okHttpClient),
+        ) { spec ->
+            spec.buildUpon().setHttpRequestHeaders(currentRequestHeaders).build()
+        }
 
         bufferParams = PlaybackResilience.bufferParams(prefs.bufferProfile())
         val item = buildMediaItem(channel, isLive)
@@ -597,13 +604,33 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /** Cabeceras del canal: #EXTVLCOPT propio > cabeceras de la fuente. */
+    private suspend fun headersFor(channel: ChannelEntity): Pair<String, String?> =
+        headersFor(channel, sourceDao.findById(channel.sourceId))
+
+    private fun headersFor(channel: ChannelEntity, source: SourceEntity?): Pair<String, String?> {
+        val userAgent = channel.userAgent?.takeIf { it.isNotBlank() }
+            ?: source?.userAgent ?: DEFAULT_USER_AGENT
+        val referrer = channel.referrer?.takeIf { it.isNotBlank() }
+            ?: source?.referrer?.takeIf { it.isNotBlank() }
+        return userAgent to referrer
+    }
+
+    private fun requestHeaders(userAgent: String, referrer: String?) = buildMap {
+        put("User-Agent", userAgent)
+        referrer?.let { put("Referer", it) }
+    }
+
     /** Spec del stream remoto (URL + cabeceras) que el receptor debe cargar. */
-    private fun castSpec(channel: ChannelEntity) = CastStreamSpec(
-        remoteUrl = remoteUrl ?: channel.streamUrl,
-        userAgent = castUserAgent,
-        referrer = castReferrer,
-        channelTitle = channel.name,
-    )
+    private suspend fun castSpec(channel: ChannelEntity): CastStreamSpec {
+        val (userAgent, referrer) = headersFor(channel)
+        return CastStreamSpec(
+            remoteUrl = remoteUrl ?: channel.streamUrl,
+            userAgent = userAgent,
+            referrer = referrer,
+            channelTitle = channel.name,
+        )
+    }
 
     private suspend fun resumePosition(channelId: Long): Long =
         playbackHistoryDao.find(channelId)?.let { entry ->
@@ -650,6 +677,8 @@ class PlayerViewModel @Inject constructor(
                 reconnectAttempt = null,
             )
         }
+        val (ua, ref) = headersFor(channel)
+        currentRequestHeaders = requestHeaders(ua, ref)
         val item = buildMediaItem(channel, isLive)
         mediaItem = item
         remoteUrl = channel.streamUrl

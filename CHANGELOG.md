@@ -25,6 +25,9 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 - Corregido el envío a Chromecast de canales TS en directo en teléfonos de
   32 bits, donde fallaba siempre (FFmpegKit sólo distribuye binarios de
   64 bits): ahora recurre al cortador de paquetes en memoria.
+- Los canales que exigen cabeceras propias (User-Agent/Referer vía
+  #EXTVLCOPT) las aplican también al cambiar de canal y al emitir: antes el
+  zapping y el Cast reutilizaban las del primer canal abierto.
 
 ### Otras
 
