@@ -112,16 +112,4 @@ class ProgrammeSearchTest {
 
         assertEquals(30L, hit.channelId)
     }
-
-    @Test
-    fun movedInScopeSwapsAndRespectsBounds() {
-        val scope = listOf(channel(1), channel(2), channel(3))
-
-        val moved = movedInScope(scope, channelId = 2, up = true)
-        assertEquals(listOf(2L, 1L, 3L), moved!!.map { it.id })
-
-        assertNull(movedInScope(scope, channelId = 1, up = true))
-        assertNull(movedInScope(scope, channelId = 3, up = false))
-        assertNull(movedInScope(scope, channelId = 99, up = false))
-    }
 }

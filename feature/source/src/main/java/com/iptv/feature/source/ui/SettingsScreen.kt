@@ -1,5 +1,6 @@
 package com.iptv.feature.source.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
@@ -21,8 +23,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
@@ -41,12 +41,15 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -68,6 +71,8 @@ import com.iptv.core.storage.entity.SourceTypes
 import com.iptv.feature.source.R
 import java.text.DateFormat
 import java.util.Date
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 /**
  * Pestaña Ajustes: fuentes, opciones (refresco automático y control
@@ -490,7 +495,7 @@ fun SettingsScreen(
             parentalEnabled = settings.parentalEnabled,
             onToggleLock = settingsViewModel::setCategoryLocked,
             onToggleHidden = settingsViewModel::setCategoryHidden,
-            onMove = settingsViewModel::moveCategory,
+            onReorderCategories = settingsViewModel::persistCategoryOrder,
             onRename = settingsViewModel::renameCategory,
             onRestoreName = settingsViewModel::restoreCategoryName,
             onUnhideChannel = settingsViewModel::unhideChannel,
@@ -727,60 +732,96 @@ private fun CategoriesDialog(
     parentalEnabled: Boolean,
     onToggleLock: (Long, Boolean) -> Unit,
     onToggleHidden: (Long, Boolean) -> Unit,
-    onMove: (Long, Boolean) -> Unit,
+    onReorderCategories: (List<Long>) -> Unit,
     onRename: (Long, String) -> Unit,
     onRestoreName: (Long) -> Unit,
     onUnhideChannel: (Long) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var renameTarget by remember { mutableStateOf<CategoryEntity?>(null) }
+    val listState = rememberLazyListState()
+    // Una fila por elemento del diálogo; las cabeceras no se arrastran y una
+    // categoría no puede cruzar a otro grupo de tipo.
+    val slots = remember { mutableStateListOf<ManageSlot>() }
+    val reorderState = rememberReorderableLazyListState(listState) { from, to ->
+        val f = slots.getOrNull(from.index)
+        val t = slots.getOrNull(to.index)
+        if (f is ManageSlot.Category && t is ManageSlot.Category &&
+            f.entity.kind == t.entity.kind
+        ) {
+            slots.add(to.index, slots.removeAt(from.index))
+        }
+    }
+    LaunchedEffect(categories, hiddenChannels, reorderState.isAnyItemDragging) {
+        if (!reorderState.isAnyItemDragging) {
+            slots.clear()
+            categories.groupBy { it.kind }.forEach { (kind, group) ->
+                slots.add(ManageSlot.KindHeader(kind))
+                group.forEach { slots.add(ManageSlot.Category(it)) }
+            }
+            if (hiddenChannels.isNotEmpty()) {
+                slots.add(ManageSlot.HiddenHeader)
+                hiddenChannels.forEach { slots.add(ManageSlot.HiddenChannel(it)) }
+            }
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.settings_categories_manage)) },
         text = {
-            LazyColumn {
-                categories.groupBy { it.kind }.forEach { (kind, group) ->
-                    item(key = "header_$kind") {
-                        Text(
-                            kindLabel(kind),
+            Column {
+                Text(
+                    stringResource(R.string.category_drag_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
+                LazyColumn(state = listState) {
+                items(slots, key = { it.key }) { slot ->
+                    when (slot) {
+                        is ManageSlot.KindHeader -> Text(
+                            kindLabel(slot.kind),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
                         )
-                    }
-                    items(group, key = { it.id }) { category ->
-                        CategoryManageRow(
-                            category = category,
-                            showLock = parentalEnabled,
-                            firstInGroup = group.first().id == category.id,
-                            lastInGroup = group.last().id == category.id,
-                            onToggleLock = onToggleLock,
-                            onToggleHidden = onToggleHidden,
-                            onMove = onMove,
-                            onRenameClick = { renameTarget = category },
-                        )
-                    }
-                }
-                if (hiddenChannels.isNotEmpty()) {
-                    item(key = "header_hidden_channels") {
-                        Text(
+                        ManageSlot.HiddenHeader -> Text(
                             stringResource(R.string.settings_hidden_channels),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
                         )
-                    }
-                    items(hiddenChannels, key = { "hidden_${it.id}" }) { channel ->
-                        Row(
+                        is ManageSlot.Category -> ReorderableItem(
+                            reorderState,
+                            key = slot.key,
+                        ) { isDragging ->
+                            CategoryManageRow(
+                                category = slot.entity,
+                                showLock = parentalEnabled,
+                                dragging = isDragging,
+                                dragModifier = Modifier.longPressDraggableHandle(
+                                    onDragStopped = {
+                                        onReorderCategories(
+                                            slots.filterIsInstance<ManageSlot.Category>()
+                                                .map { it.entity.id },
+                                        )
+                                    },
+                                ),
+                                onToggleLock = onToggleLock,
+                                onToggleHidden = onToggleHidden,
+                                onRenameClick = { renameTarget = slot.entity },
+                            )
+                        }
+                        is ManageSlot.HiddenChannel -> Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                channel.name,
+                                slot.entity.name,
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.weight(1f),
                             )
-                            IconButton(onClick = { onUnhideChannel(channel.id) }) {
+                            IconButton(onClick = { onUnhideChannel(slot.entity.id) }) {
                                 Icon(
                                     Icons.Filled.VisibilityOff,
                                     contentDescription =
@@ -790,6 +831,7 @@ private fun CategoriesDialog(
                             }
                         }
                     }
+                }
                 }
             }
         },
@@ -813,35 +855,43 @@ private fun CategoriesDialog(
     }
 }
 
+/** Filas del diálogo de categorías: cabecera, categoría reordenable u oculto. */
+private sealed interface ManageSlot {
+    val key: String
+
+    data class KindHeader(val kind: String) : ManageSlot {
+        override val key get() = "header_$kind"
+    }
+    data object HiddenHeader : ManageSlot {
+        override val key get() = "header_hidden_channels"
+    }
+    data class Category(val entity: CategoryEntity) : ManageSlot {
+        override val key get() = "cat_${entity.id}"
+    }
+    data class HiddenChannel(val entity: ChannelEntity) : ManageSlot {
+        override val key get() = "hidden_${entity.id}"
+    }
+}
+
 @Composable
 private fun CategoryManageRow(
     category: CategoryEntity,
     showLock: Boolean,
-    firstInGroup: Boolean,
-    lastInGroup: Boolean,
+    dragging: Boolean,
+    dragModifier: Modifier,
     onToggleLock: (Long, Boolean) -> Unit,
     onToggleHidden: (Long, Boolean) -> Unit,
-    onMove: (Long, Boolean) -> Unit,
     onRenameClick: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth()
+            .background(
+                if (dragging) MaterialTheme.colorScheme.surfaceVariant
+                else Color.Transparent,
+            )
+            .then(dragModifier),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column {
-            IconButton(onClick = { onMove(category.id, true) }, enabled = !firstInGroup) {
-                Icon(
-                    Icons.Filled.KeyboardArrowUp,
-                    contentDescription = stringResource(R.string.category_move_up),
-                )
-            }
-            IconButton(onClick = { onMove(category.id, false) }, enabled = !lastInGroup) {
-                Icon(
-                    Icons.Filled.KeyboardArrowDown,
-                    contentDescription = stringResource(R.string.category_move_down),
-                )
-            }
-        }
         Text(
             category.name,
             style = MaterialTheme.typography.bodyMedium,

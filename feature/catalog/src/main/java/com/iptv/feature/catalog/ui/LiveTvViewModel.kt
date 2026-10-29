@@ -349,23 +349,37 @@ class LiveTvViewModel @Inject constructor(
     }
 
     /**
-     * Mueve el canal una posición dentro del ámbito visible (favoritos o
-     * categoría). En el primer movimiento se materializa el orden completo
-     * del ámbito en `customOrder`; los canales que lleguen después por
-     * resincronización se insertan en su posición de proveedor.
+     * Ámbito reordenable visible (favoritos o una categoría concreta), como
+     * lista completa no paginada para el drag & drop. `null` en "Todos" y
+     * con búsqueda activa: ahí el orden siempre es el del proveedor.
      */
-    fun moveChannel(channel: ChannelEntity, up: Boolean) {
-        val filters = _filters.value
-        viewModelScope.launch {
-            val scope = when {
+    val reorderScope: StateFlow<List<ChannelEntity>?> = combine(activeSource, _filters, ::Pair)
+        .flatMapLatest { (source, filters) ->
+            when {
+                source == null || filters.query.isNotBlank() -> flowOf(null)
                 filters.favoritesOnly ->
-                    channelDao.favoritesForReorder(channel.sourceId, channel.kind)
+                    channelDao.observeFavoritesForReorder(source.id, ContentKind.TV.storageValue)
                 filters.categoryId != null ->
-                    channelDao.categoryChannelsForReorder(filters.categoryId)
-                else -> return@launch
+                    channelDao.observeCategoryForReorder(source.id, filters.categoryId)
+                else -> flowOf(null)
             }
-            val reordered = movedInScope(scope, channel.id, up) ?: return@launch
-            channelDao.updateAll(reordered.mapIndexed { i, c -> c.copy(customOrder = i) })
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * Persiste el orden tras un drag & drop: materializa `customOrder` en el
+     * ámbito entero leyendo la entidad fresca de la DB (los items de la UI
+     * pueden estar stale si algo cambió a mitad del gesto). Los canales que
+     * lleguen después por resincronización se insertan en su posición de
+     * proveedor.
+     */
+    fun persistReorder(orderedIds: List<Long>) {
+        val scope = reorderScope.value ?: return
+        val byId = scope.associateBy { it.id }
+        viewModelScope.launch {
+            channelDao.updateAll(
+                orderedIds.mapIndexedNotNull { i, id -> byId[id]?.copy(customOrder = i) },
+            )
         }
     }
 
@@ -411,19 +425,4 @@ internal fun toProgrammeHits(
                 channelCount = emitting.size,
             )
         }
-}
-
-/**
- * Devuelve [scope] con [channelId] movido una posición (arriba/abajo), o
- * `null` si el movimiento sale del ámbito. Pura, para prueba sin Room.
- */
-internal fun movedInScope(
-    scope: List<ChannelEntity>,
-    channelId: Long,
-    up: Boolean,
-): List<ChannelEntity>? {
-    val from = scope.indexOfFirst { it.id == channelId }
-    val to = if (up) from - 1 else from + 1
-    if (from < 0 || to !in scope.indices) return null
-    return scope.toMutableList().apply { this[from] = this[to].also { this[to] = this[from] } }
 }

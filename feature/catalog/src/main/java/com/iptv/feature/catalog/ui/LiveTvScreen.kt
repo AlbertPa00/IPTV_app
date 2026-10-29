@@ -1,6 +1,7 @@
 package com.iptv.feature.catalog.ui
 
 import android.content.res.Configuration
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -20,13 +21,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -47,6 +48,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -77,6 +79,8 @@ import com.iptv.feature.catalog.R
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 /**
  * Sección TV en directo: lista de zapping con el programa en emisión y el
@@ -99,6 +103,7 @@ fun LiveTvScreen(
     val showQuickHint by viewModel.showQuickHint.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val content = viewModel.channels.collectAsLazyPagingItems()
+    val reorderScope by viewModel.reorderScope.collectAsStateWithLifecycle()
     var showLanguagePicker by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<ChannelEntity?>(null) }
     // El pull-to-refresh también revalida el PagingSource: el indicador se
@@ -184,9 +189,8 @@ fun LiveTvScreen(
                     onClick = onChannelClick,
                     onToggleFavorite = viewModel::toggleFavorite,
                     favOverride = favOverride,
-                    canReorder = filters.query.isBlank() &&
-                        (filters.favoritesOnly || filters.categoryId != null),
-                    onMoveChannel = { channel, up -> viewModel.moveChannel(channel, up) },
+                    reorderItems = reorderScope,
+                    onReorder = viewModel::persistReorder,
                     onRenameChannel = { channel -> renameTarget = channel },
                     onRestoreName = viewModel::restoreChannelName,
                     onHideChannel = viewModel::hideChannel,
@@ -288,13 +292,32 @@ private fun ChannelList(
     onClick: (Long) -> Unit,
     onToggleFavorite: (ChannelEntity) -> Unit,
     favOverride: (Long) -> Boolean?,
-    canReorder: Boolean,
-    onMoveChannel: (ChannelEntity, Boolean) -> Unit,
+    reorderItems: List<ChannelEntity>?,
+    onReorder: (List<Long>) -> Unit,
     onRenameChannel: (ChannelEntity) -> Unit,
     onRestoreName: (ChannelEntity) -> Unit,
     onHideChannel: (ChannelEntity) -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
+    val lazyListState = rememberLazyListState()
+    // Copia local del ámbito mientras dura el drag; al soltar se persiste el
+    // orden y la emisión de Room vuelve a mandar con ese mismo orden.
+    val scopeItems = remember { mutableStateListOf<ChannelEntity>() }
+    val reorderable = reorderItems != null
+    // Los índices de onMove son del LazyColumn: la cabecera de programas desplaza.
+    val headerItems = if (programmeHits.isNotEmpty()) 1 else 0
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        scopeItems.add(to.index - headerItems, scopeItems.removeAt(from.index - headerItems))
+        haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+    }
+    LaunchedEffect(reorderItems, reorderableState.isAnyItemDragging) {
+        if (!reorderableState.isAnyItemDragging) {
+            scopeItems.clear()
+            scopeItems.addAll(reorderItems.orEmpty())
+        }
+    }
     LazyColumn(
+        state = lazyListState,
         verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
         modifier = Modifier.fillMaxSize(),
@@ -309,26 +332,54 @@ private fun ChannelList(
                 )
             }
         }
-        items(count = content.itemCount, key = content.itemKey { it.id }) { index ->
-            content[index]?.let { raw ->
-                // Estrella optimista: no esperar al refresh de Paging.
+        if (reorderable) {
+            items(scopeItems, key = { it.id }) { raw ->
                 val channel = favOverride(raw.id)
                     ?.let { raw.copy(isFavorite = it) } ?: raw
-                LiveChannelRow(
-                    channel = channel,
-                    guide = guideByChannel[channel.id],
-                    now = now,
-                    canReorder = canReorder,
-                    onClick = { onClick(channel.id) },
-                    onToggleFavorite = { onToggleFavorite(channel) },
-                    onMoveChannel = { up -> onMoveChannel(channel, up) },
-                    onRename = { onRenameChannel(channel) },
-                    onRestoreName = { onRestoreName(channel) },
-                    onHide = { onHideChannel(channel) },
-                )
+                ReorderableItem(reorderableState, key = raw.id) { isDragging ->
+                    LiveChannelRow(
+                        channel = channel,
+                        guide = guideByChannel[channel.id],
+                        now = now,
+                        reorderable = true,
+                        dragging = isDragging,
+                        dragModifier = Modifier.longPressDraggableHandle(
+                            onDragStarted = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                            onDragStopped = { onReorder(scopeItems.map { it.id }) },
+                        ),
+                        onClick = { onClick(channel.id) },
+                        onToggleFavorite = { onToggleFavorite(channel) },
+                        onRename = { onRenameChannel(channel) },
+                        onRestoreName = { onRestoreName(channel) },
+                        onHide = { onHideChannel(channel) },
+                    )
+                }
             }
+        } else {
+            items(count = content.itemCount, key = content.itemKey { it.id }) { index ->
+                content[index]?.let { raw ->
+                    // Estrella optimista: no esperar al refresh de Paging.
+                    val channel = favOverride(raw.id)
+                        ?.let { raw.copy(isFavorite = it) } ?: raw
+                    LiveChannelRow(
+                        channel = channel,
+                        guide = guideByChannel[channel.id],
+                        now = now,
+                        reorderable = false,
+                        dragging = false,
+                        dragModifier = Modifier,
+                        onClick = { onClick(channel.id) },
+                        onToggleFavorite = { onToggleFavorite(channel) },
+                        onRename = { onRenameChannel(channel) },
+                        onRestoreName = { onRestoreName(channel) },
+                        onHide = { onHideChannel(channel) },
+                    )
+                }
+            }
+            item { PagingAppendState(content.loadState.append) { content.retry() } }
         }
-        item { PagingAppendState(content.loadState.append) { content.retry() } }
     }
 }
 
@@ -337,26 +388,34 @@ private fun LiveChannelRow(
     channel: ChannelEntity,
     guide: GuideRow?,
     now: Long,
-    canReorder: Boolean,
+    reorderable: Boolean,
+    dragging: Boolean,
+    dragModifier: Modifier,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onMoveChannel: (Boolean) -> Unit,
     onRename: () -> Unit,
     onRestoreName: () -> Unit,
     onHide: () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
     var menuOpen by remember { mutableStateOf(false) }
+    val elevation by animateDpAsState(if (dragging) 8.dp else 0.dp, label = "dragElevation")
     Box {
         Card(
             colors = CardDefaults.cardColors(containerColor = Graphite),
             shape = RoundedCornerShape(12.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = elevation),
             modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp)
+                .then(dragModifier)
                 .combinedClickable(
                     onClick = onClick,
-                    onLongClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        menuOpen = true
+                    onLongClick = if (reorderable) {
+                        null
+                    } else {
+                        {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuOpen = true
+                        }
                     },
                 ),
         ) {
@@ -400,25 +459,23 @@ private fun LiveChannelRow(
                     tint = if (channel.isFavorite) Carmine else MutedText,
                 )
             }
+            // Con reorden por long-press el menú necesita ancla propia.
+            if (reorderable) {
+                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = stringResource(R.string.catalog_channel_actions),
+                        tint = MutedText,
+                    )
+                }
+            }
         }
         }
-        // Menú contextual (pulsación larga): reordenar en favoritos o dentro
-        // de la categoría, renombrar (la guía sigue casando por el nombre del
-        // proveedor) y ocultar el canal de toda la app.
+        // Menú contextual: renombrar (la guía sigue casando por el nombre del
+        // proveedor) y ocultar el canal de toda la app. En favoritos/categoría
+        // se abre desde ⋮; fuera, con pulsación larga sobre la tarjeta.
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             fun dismissAnd(action: () -> Unit): () -> Unit = { menuOpen = false; action() }
-            if (canReorder) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.catalog_channel_move_up)) },
-                    leadingIcon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) },
-                    onClick = dismissAnd { onMoveChannel(true) },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.catalog_channel_move_down)) },
-                    leadingIcon = { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null) },
-                    onClick = dismissAnd { onMoveChannel(false) },
-                )
-            }
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.catalog_channel_rename)) },
                 leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },

@@ -189,13 +189,13 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND hidden = 1 ORDER BY kind, name")
     fun observeHidden(sourceId: Long): Flow<List<ChannelEntity>>
 
-    /** Lista en orden efectivo para reordenar favoritos. */
+    /** Ámbito completo de favoritos para reordenar (mismo filtro que pagingFavorites). */
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isFavorite = 1 AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY $CUSTOM_OR_PROVIDER_ORDER")
-    suspend fun favoritesForReorder(sourceId: Long, kind: String): List<ChannelEntity>
+    fun observeFavoritesForReorder(sourceId: Long, kind: String): Flow<List<ChannelEntity>>
 
-    /** Lista en orden efectivo para reordenar dentro de una categoría. */
-    @Query("SELECT * FROM channels WHERE categoryId = :categoryId AND externalId NOT LIKE 'episode:%' AND hidden = 0 ORDER BY $CUSTOM_OR_PROVIDER_ORDER")
-    suspend fun categoryChannelsForReorder(categoryId: Long): List<ChannelEntity>
+    /** Ámbito completo de una categoría para reordenar (mismo filtro que pagingByCategory). */
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND categoryId = :categoryId AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY $CUSTOM_OR_PROVIDER_ORDER")
+    fun observeCategoryForReorder(sourceId: Long, categoryId: Long): Flow<List<ChannelEntity>>
 
     @Update
     suspend fun updateAll(channels: List<ChannelEntity>)

@@ -367,20 +367,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * Mueve la categoría una posición dentro de su grupo (LIVE/VOD/SERIES).
-     * Reescribe el sortOrder del grupo completo según el orden visible.
+     * Persiste el orden tras un drag & drop: reescribe `sortOrder` dentro de
+     * cada grupo (LIVE/VOD/SERIES) según el orden visible en el diálogo.
      */
-    fun moveCategory(categoryId: Long, up: Boolean) {
-        val list = categories.value
-        val index = list.indexOfFirst { it.id == categoryId }
-        if (index < 0) return
-        val kind = list[index].kind
-        val group = list.filter { it.kind == kind }.toMutableList()
-        val from = group.indexOfFirst { it.id == categoryId }
-        val to = if (up) from - 1 else from + 1
-        if (to !in group.indices) return
-        group[from] = group[to].also { group[to] = group[from] }
-        val reordered = group.mapIndexed { i, category -> category.copy(sortOrder = i) }
+    fun persistCategoryOrder(orderedIds: List<Long>) {
+        val byId = categories.value.associateBy { it.id }
+        val reordered = orderedIds.mapNotNull(byId::get)
+            .groupBy(CategoryEntity::kind).values
+            .flatMap { group -> group.mapIndexed { i, c -> c.copy(sortOrder = i) } }
+        if (reordered.isEmpty()) return
         viewModelScope.launch { categoryDao.updateAll(reordered) }
     }
 

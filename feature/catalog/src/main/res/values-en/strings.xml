@@ -102,8 +102,7 @@
     <string name="catalog_channel_hide">Hide channel</string>
     <string name="catalog_channel_rename">Rename</string>
     <string name="catalog_channel_restore_name">Restore original name</string>
-    <string name="catalog_channel_move_up">Move up</string>
-    <string name="catalog_channel_move_down">Move down</string>
+    <string name="catalog_channel_actions">Channel actions</string>
     <string name="catalog_rename_title">Rename channel</string>
     <string name="catalog_rename_field">Name</string>
     <string name="catalog_save">Save</string>

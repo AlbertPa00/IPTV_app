@@ -94,8 +94,7 @@
     <string name="settings_reconnect_continuous_sub">Reintentar sin límite cuando un canal se corta</string>
     <string name="category_show">Mostrar</string>
     <string name="category_hide">Ocultar</string>
-    <string name="category_move_up">Subir</string>
-    <string name="category_move_down">Bajar</string>
+    <string name="category_drag_hint">Mantén pulsada una categoría y arrastra para reordenar</string>
     <string name="category_rename">Renombrar</string>
     <string name="category_rename_title">Renombrar categoría</string>
     <string name="category_rename_field">Nombre</string>
