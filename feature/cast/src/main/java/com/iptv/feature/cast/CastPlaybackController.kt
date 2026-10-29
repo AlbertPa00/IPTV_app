@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 
 /**
  * Orquestación de la sesión Cast: transferencia local↔remoto, sondeo del
@@ -45,6 +46,7 @@ import kotlinx.coroutines.withContext
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class CastPlaybackController @Inject constructor(
     @ApplicationContext private val appContext: Context,
+    private val okHttpClient: OkHttpClient,
 ) : CastController {
 
     private val _uiState = MutableStateFlow(CastUiState())
@@ -204,7 +206,7 @@ class CastPlaybackController @Inject constructor(
             castContext?.sessionManager?.currentCastSession?.castDevice?.inetAddress
         }.getOrNull()
         val proxy = CastProxyRuntime.ensureStarted(
-            appContext, spec.userAgent, spec.referrer, remoteAddress,
+            appContext, okHttpClient, spec.userAgent, spec.referrer, remoteAddress,
         )
         val proxiedUrl = when {
             proxy == null -> target.url
@@ -261,7 +263,7 @@ class CastPlaybackController @Inject constructor(
             listOf(hlsVariant, originalUrl)
         }
         for (url in candidates) {
-            val kind = StreamProber.probe(url, spec.userAgent, spec.referrer)
+            val kind = StreamProber.probe(okHttpClient, url, spec.userAgent, spec.referrer)
             Log.d(TAG, "Probe $url -> $kind")
             val target = when (kind) {
                 StreamProber.Kind.HLS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, null)

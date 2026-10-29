@@ -32,12 +32,6 @@ object StreamProber {
     private const val SNIFF_BYTES = 512
     private const val TS_SYNC: Byte = 0x47
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build()
-
     /**
      * Resultados por (url, UA, referer): re-sondear la misma URL repetiría la
      * petición en vano (zapping Cast, reintentos locales). Vive en el objeto,
@@ -49,22 +43,34 @@ object StreamProber {
      * Fetches the first bytes of [url] and sniffs the payload.
      * Never throws; returns [Kind.UNKNOWN] on any failure.
      */
-    fun probe(url: String, userAgent: String, referrer: String?): Kind {
+    fun probe(client: OkHttpClient, url: String, userAgent: String, referrer: String?): Kind {
         val key = Triple(url, userAgent, referrer.orEmpty())
-        return cache[key] ?: doProbe(url, userAgent, referrer).also { kind ->
+        return cache[key] ?: doProbe(client, url, userAgent, referrer).also { kind ->
             // UNKNOWN suele ser fallo transitorio (timeout, red caída): no se
             // cachea para que el próximo intento sondee de verdad.
             if (kind != Kind.UNKNOWN) cache[key] = kind
         }
     }
 
-    private fun doProbe(url: String, userAgent: String, referrer: String?): Kind = runCatching {
+    private fun doProbe(
+        client: OkHttpClient,
+        url: String,
+        userAgent: String,
+        referrer: String?,
+    ): Kind = runCatching {
         val request = Request.Builder().url(url)
             .header("User-Agent", userAgent)
             .header("Range", "bytes=0-4095")
             .apply { referrer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
             .build()
-        client.newCall(request).execute().use { response ->
+        // Timeouts cortos propios del sondeo (fail fast ante paneles
+        // caídos) compartiendo el pool del cliente de la app.
+        client.newBuilder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
+            .newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 Log.w(TAG, "Probe HTTP ${response.code} for ${redactUrl(url)}")
                 return@use Kind.UNKNOWN

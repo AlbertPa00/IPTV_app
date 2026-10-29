@@ -374,7 +374,7 @@ class PlayerViewModel @Inject constructor(
             val channel = _uiState.value.channel ?: return@launch
             val (ua, ref) = headersFor(channel)
             val mime = withContext(Dispatchers.IO) {
-                StreamProber.probe(url, ua, ref).mimeType
+                StreamProber.probe(okHttpClient, url, ua, ref).mimeType
             } ?: return@launch
             Log.w(TAG, "Retrying playback with sniffed mime $mime")
             mediaItem = mediaItem?.buildUpon()?.setMimeType(mime)?.build()

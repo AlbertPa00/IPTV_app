@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.net.InetAddress
+import okhttp3.OkHttpClient
 
 /**
  * App-scoped owner of the [CastProxyServer]. The proxy must outlive the
@@ -30,6 +31,7 @@ object CastProxyRuntime {
     @Synchronized
     fun ensureStarted(
         context: Context,
+        baseClient: OkHttpClient,
         userAgent: String,
         referrer: String?,
         remoteAddress: InetAddress?,
@@ -41,6 +43,7 @@ object CastProxyRuntime {
         val created = CastProxyServer(
             userAgent, referrer, host,
             java.io.File(context.cacheDir, "casthls"),
+            baseClient,
         )
         return try {
             created.start()
