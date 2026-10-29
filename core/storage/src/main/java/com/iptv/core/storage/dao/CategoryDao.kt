@@ -32,6 +32,14 @@ interface CategoryDao {
     @Query("UPDATE categories SET hidden = :hidden WHERE id = :id")
     suspend fun setHidden(id: Long, hidden: Boolean)
 
+    /** Renombrar sólo toca la copia del usuario; el proveedor sigue en `providerName`. */
+    @Query("UPDATE categories SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
+
+    /** Devuelve la categoría al nombre del proveedor. */
+    @Query("UPDATE categories SET name = providerName WHERE id = :id")
+    suspend fun restoreName(id: Long)
+
     @androidx.room.Update
     suspend fun updateAll(categories: List<CategoryEntity>)
 
@@ -75,21 +83,23 @@ interface CategoryDao {
     @Query(
         """
         INSERT OR REPLACE INTO categories
-            (id, sourceId, externalId, kind, name, sortOrder, isLocked, hidden, language)
-        SELECT x.id, s.sourceId, s.externalId, s.kind, s.name, x.sortOrder,
-               x.isLocked, x.hidden, s.language
+            (id, sourceId, externalId, kind, name, sortOrder, isLocked, hidden, language,
+             providerName)
+        SELECT x.id, s.sourceId, s.externalId, s.kind,
+               CASE WHEN x.name = x.providerName THEN s.name ELSE x.name END,
+               x.sortOrder, x.isLocked, x.hidden, s.language, s.name
         FROM categories_staging s
         JOIN categories x ON x.sourceId = s.sourceId AND x.externalId = s.externalId
         WHERE s.sourceId = :sourceId AND (
-            x.kind IS NOT s.kind OR x.name IS NOT s.name OR x.language IS NOT s.language)
+            x.kind IS NOT s.kind OR x.providerName IS NOT s.name OR x.language IS NOT s.language)
         """,
     )
     suspend fun mergeStagedUpdates(sourceId: Long)
 
     @Query(
         """
-        INSERT INTO categories (sourceId, externalId, kind, name, sortOrder, isLocked, hidden, language)
-        SELECT s.sourceId, s.externalId, s.kind, s.name, s.sortOrder, 0, 0, s.language
+        INSERT INTO categories (sourceId, externalId, kind, name, sortOrder, isLocked, hidden, language, providerName)
+        SELECT s.sourceId, s.externalId, s.kind, s.name, s.sortOrder, 0, 0, s.language, s.name
         FROM categories_staging s
         WHERE s.sourceId = :sourceId AND NOT EXISTS (
             SELECT 1 FROM categories x

@@ -1,5 +1,6 @@
 package com.iptv.core.storage.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -26,6 +27,13 @@ data class CategoryEntity(
     val hidden: Boolean = false,
     /** Idioma/país detectado del nombre ("ES", "AR", "US"…); "" = sin señal. */
     val language: String = "",
+    /**
+     * Nombre del proveedor en la última sincronización. `name` es el nombre
+     * efectivo (puede estar renombrado por el usuario): si difiere de
+     * `providerName`, la sync conserva el renombre en lugar de pisarlo.
+     */
+    @ColumnInfo(defaultValue = "")
+    val providerName: String = name,
 )
 
 object Kinds {

@@ -30,27 +30,43 @@ class MergeStagingTest {
         AppDatabase::class.java,
     ).build()
 
-    private suspend fun seed(database: AppDatabase): Long {
+    private suspend fun seed(
+        database: AppDatabase,
+        channelName: (Int) -> String = { "Canal $it" },
+    ): Long {
         val sourceId = database.sourceDao().insert(
             SourceEntity(type = SourceTypes.M3U_FILE, name = "test", url = "/x.m3u", isActive = true),
         )
+        stageChannels(database, sourceId, channelName)
+        return sourceId
+    }
+
+    private suspend fun stageChannels(
+        database: AppDatabase,
+        sourceId: Long,
+        channelName: (Int) -> String,
+    ) {
         database.channelDao().insertStaging(
             (1..303).map {
+                val name = channelName(it)
                 ChannelStagingEntity(
                     sourceId = sourceId,
                     externalId = "http://x/$it.m3u8",
-                    name = "Canal $it",
-                    nameNorm = "canal $it",
+                    name = name,
+                    nameNorm = name.lowercase(),
                     streamUrl = "http://x/$it.m3u8",
                     groupTitle = "LIVE:TV | TDT",
                     kind = Kinds.LIVE,
                 )
             },
         )
-        return sourceId
     }
 
-    private suspend fun merge(database: AppDatabase, sourceId: Long) {
+    private suspend fun merge(
+        database: AppDatabase,
+        sourceId: Long,
+        categoryName: String = "TV | TDT",
+    ) {
         database.withTransaction {
             database.categoryDao().clearStaging(sourceId)
             database.categoryDao().insertStaging(
@@ -59,7 +75,7 @@ class MergeStagingTest {
                         sourceId = sourceId,
                         externalId = "LIVE:TV | TDT",
                         kind = Kinds.LIVE,
-                        name = "TV | TDT",
+                        name = categoryName,
                     ),
                 ),
             )
@@ -97,6 +113,64 @@ class MergeStagingTest {
                 emit(Unit)
             }.flowOn(Dispatchers.IO).collect { }
             assertEquals(303, database.channelDao().countBySource(sourceId))
+        } finally {
+            database.close()
+        }
+    }
+
+    /**
+     * Las columnas del usuario (renombre, ocultación, orden manual y los de
+     * categorías) sobreviven a una resincronización que cambia los datos del
+     * proveedor: el REPLACE del merge las arrastra como hace con isFavorite.
+     */
+    @Test
+    fun mergePreservesUserCustomizations() = runBlocking {
+        val database = db()
+        try {
+            val sourceId = seed(database)
+            merge(database, sourceId)
+
+            val dao = database.channelDao()
+            val ch5 = dao.findByExternalId(sourceId, "http://x/5.m3u8")!!
+            val ch7 = dao.findByExternalId(sourceId, "http://x/7.m3u8")!!
+            val ch9 = dao.findByExternalId(sourceId, "http://x/9.m3u8")!!
+            dao.rename(ch5.id, "Mi Canal", "mi canal")
+            dao.setHidden(ch7.id, true)
+            dao.updateAll(listOf(ch9.copy(customOrder = 7)))
+            val cat = database.categoryDao().allBySource(sourceId).single()
+            database.categoryDao().rename(cat.id, "Mi Grupo")
+
+            // El proveedor renombra canales y la categoría en la siguiente
+            // importación: dispara el REPLACE sobre esas filas.
+            dao.clearStaging(sourceId)
+            stageChannels(database, sourceId) { i ->
+                when (i) {
+                    5 -> "Canal Cinco"
+                    9 -> "Canal Nueve"
+                    10 -> "Canal Diez"
+                    else -> "Canal $i"
+                }
+            }
+            merge(database, sourceId, categoryName = "Nuevo TDT")
+
+            val renamed = dao.findByExternalId(sourceId, "http://x/5.m3u8")!!
+            assertEquals("Mi Canal", renamed.name)
+            assertEquals("mi canal", renamed.nameNorm)
+            assertEquals("Canal Cinco", renamed.providerName)
+            assertEquals("canal cinco", renamed.providerNameNorm)
+
+            // Sin renombre del usuario, el nombre sigue al proveedor.
+            val tracked = dao.findByExternalId(sourceId, "http://x/10.m3u8")!!
+            assertEquals("Canal Diez", tracked.name)
+
+            // Orden manual y ocultación sobreviven al REPLACE.
+            val reordered = dao.findByExternalId(sourceId, "http://x/9.m3u8")!!
+            assertEquals(7, reordered.customOrder)
+            assertEquals(true, dao.findByExternalId(sourceId, "http://x/7.m3u8")!!.hidden)
+
+            val renamedCat = database.categoryDao().allBySource(sourceId).single()
+            assertEquals("Mi Grupo", renamedCat.name)
+            assertEquals("Nuevo TDT", renamedCat.providerName)
         } finally {
             database.close()
         }

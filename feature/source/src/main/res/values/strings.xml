@@ -96,6 +96,11 @@
     <string name="category_hide">Ocultar</string>
     <string name="category_move_up">Subir</string>
     <string name="category_move_down">Bajar</string>
+    <string name="category_rename">Renombrar</string>
+    <string name="category_rename_title">Renombrar categoría</string>
+    <string name="category_rename_field">Nombre</string>
+    <string name="category_restore_name">Restaurar nombre original</string>
+    <string name="settings_hidden_channels">Canales ocultos</string>
     <string name="settings_about_title">Acerca de</string>
     <string name="settings_version">Versión</string>
     <string name="settings_licenses">Licencias de código abierto</string>

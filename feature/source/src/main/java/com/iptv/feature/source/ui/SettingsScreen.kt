@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
@@ -60,6 +61,7 @@ import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.common.text.formatBytes
 import com.iptv.core.designsystem.components.ConfirmDeleteDialog
 import com.iptv.core.storage.entity.CategoryEntity
+import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.DownloadEntity
 import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.core.storage.entity.SourceTypes
@@ -484,10 +486,14 @@ fun SettingsScreen(
     if (settings.managingCategories) {
         CategoriesDialog(
             categories = settings.categories,
+            hiddenChannels = settings.hiddenChannels,
             parentalEnabled = settings.parentalEnabled,
             onToggleLock = settingsViewModel::setCategoryLocked,
             onToggleHidden = settingsViewModel::setCategoryHidden,
             onMove = settingsViewModel::moveCategory,
+            onRename = settingsViewModel::renameCategory,
+            onRestoreName = settingsViewModel::restoreCategoryName,
+            onUnhideChannel = settingsViewModel::unhideChannel,
             onDismiss = settingsViewModel::closeCategories,
         )
     }
@@ -717,12 +723,17 @@ private fun PinDialog(
 @Composable
 private fun CategoriesDialog(
     categories: List<CategoryEntity>,
+    hiddenChannels: List<ChannelEntity>,
     parentalEnabled: Boolean,
     onToggleLock: (Long, Boolean) -> Unit,
     onToggleHidden: (Long, Boolean) -> Unit,
     onMove: (Long, Boolean) -> Unit,
+    onRename: (Long, String) -> Unit,
+    onRestoreName: (Long) -> Unit,
+    onUnhideChannel: (Long) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var renameTarget by remember { mutableStateOf<CategoryEntity?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.settings_categories_manage)) },
@@ -746,7 +757,38 @@ private fun CategoriesDialog(
                             onToggleLock = onToggleLock,
                             onToggleHidden = onToggleHidden,
                             onMove = onMove,
+                            onRenameClick = { renameTarget = category },
                         )
+                    }
+                }
+                if (hiddenChannels.isNotEmpty()) {
+                    item(key = "header_hidden_channels") {
+                        Text(
+                            stringResource(R.string.settings_hidden_channels),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+                        )
+                    }
+                    items(hiddenChannels, key = { "hidden_${it.id}" }) { channel ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                channel.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(onClick = { onUnhideChannel(channel.id) }) {
+                                Icon(
+                                    Icons.Filled.VisibilityOff,
+                                    contentDescription =
+                                        stringResource(R.string.category_show),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -755,6 +797,20 @@ private fun CategoriesDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.pin_accept)) }
         },
     )
+    renameTarget?.let { target ->
+        RenameCategoryDialog(
+            category = target,
+            onSubmit = { newName ->
+                onRename(target.id, newName)
+                renameTarget = null
+            },
+            onRestore = {
+                onRestoreName(target.id)
+                renameTarget = null
+            },
+            onDismiss = { renameTarget = null },
+        )
+    }
 }
 
 @Composable
@@ -766,6 +822,7 @@ private fun CategoryManageRow(
     onToggleLock: (Long, Boolean) -> Unit,
     onToggleHidden: (Long, Boolean) -> Unit,
     onMove: (Long, Boolean) -> Unit,
+    onRenameClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -790,6 +847,12 @@ private fun CategoryManageRow(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f),
         )
+        IconButton(onClick = onRenameClick) {
+            Icon(
+                Icons.Filled.Edit,
+                contentDescription = stringResource(R.string.category_rename),
+            )
+        }
         IconButton(onClick = { onToggleHidden(category.id, !category.hidden) }) {
             Icon(
                 if (category.hidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
@@ -810,6 +873,45 @@ private fun CategoryManageRow(
             )
         }
     }
+}
+
+/** Renombrar categoría; "Restaurar" vuelve al nombre del proveedor. */
+@Composable
+private fun RenameCategoryDialog(
+    category: CategoryEntity,
+    onSubmit: (String) -> Unit,
+    onRestore: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember(category.id) { mutableStateOf(category.name) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.category_rename_title)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                label = { Text(stringResource(R.string.category_rename_field)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSubmit(name) }, enabled = name.isNotBlank()) {
+                Text(stringResource(R.string.pin_accept))
+            }
+        },
+        dismissButton = {
+            Row {
+                if (category.name != category.providerName) {
+                    TextButton(onClick = onRestore) {
+                        Text(stringResource(R.string.category_restore_name))
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.pin_cancel)) }
+            }
+        },
+    )
 }
 
 @Composable

@@ -1,5 +1,6 @@
 package com.iptv.core.storage.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -43,4 +44,26 @@ data class ChannelEntity(
     val userAgent: String? = null,
     /** Referer propio del canal (#EXTVLCOPT http-referrer). */
     val referrer: String? = null,
+    /**
+     * Nombre del proveedor en la última sincronización. `name` es el nombre
+     * efectivo (puede estar renombrado por el usuario): si difiere de
+     * `providerName`, la sync conserva el renombre en lugar de pisarlo.
+     */
+    @ColumnInfo(defaultValue = "")
+    val providerName: String = name,
+    /**
+     * `providerName` normalizado: la EPG empareja por nombre contra este
+     * campo, así un canal renombrado por el usuario no pierde su guía.
+     */
+    @ColumnInfo(defaultValue = "")
+    val providerNameNorm: String = nameNorm,
+    /**
+     * Orden manual del usuario dentro de favoritos o de su categoría.
+     * `null` = orden del proveedor (`sortOrder`). Nunca se aplica en la
+     * vista "Todos": allí la ordenación exige índice sobre 50k+ filas.
+     */
+    val customOrder: Int? = null,
+    /** Canal ocultado por el usuario: desaparece de catálogo, búsqueda y guía. */
+    @ColumnInfo(defaultValue = "0")
+    val hidden: Boolean = false,
 )

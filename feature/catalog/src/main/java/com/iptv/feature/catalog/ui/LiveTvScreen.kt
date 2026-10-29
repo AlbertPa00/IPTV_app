@@ -3,6 +3,7 @@ package com.iptv.feature.catalog.ui
 import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,16 +24,25 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -84,11 +94,13 @@ fun LiveTvScreen(
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val languages by viewModel.languages.collectAsStateWithLifecycle()
     val guideByChannel by viewModel.guideByChannel.collectAsStateWithLifecycle()
+    val programmeHits by viewModel.programmeResults.collectAsStateWithLifecycle()
     val favOverride = viewModel::favOverride
     val showQuickHint by viewModel.showQuickHint.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val content = viewModel.channels.collectAsLazyPagingItems()
     var showLanguagePicker by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<ChannelEntity?>(null) }
     // El pull-to-refresh también revalida el PagingSource: el indicador se
     // sostiene mientras dure ese refresh además del suelo del ViewModel.
     var pulledRefresh by remember { mutableStateOf(false) }
@@ -165,8 +177,29 @@ fun LiveTvScreen(
                     }
                 }
                 else -> ChannelList(
-                    content, guideByChannel, now, onChannelClick,
-                    viewModel::toggleFavorite, favOverride,
+                    content = content,
+                    guideByChannel = guideByChannel,
+                    programmeHits = programmeHits,
+                    now = now,
+                    onClick = onChannelClick,
+                    onToggleFavorite = viewModel::toggleFavorite,
+                    favOverride = favOverride,
+                    canReorder = filters.query.isBlank() &&
+                        (filters.favoritesOnly || filters.categoryId != null),
+                    onMoveChannel = { channel, up -> viewModel.moveChannel(channel, up) },
+                    onRenameChannel = { channel -> renameTarget = channel },
+                    onRestoreName = viewModel::restoreChannelName,
+                    onHideChannel = viewModel::hideChannel,
+                )
+            }
+            renameTarget?.let { target ->
+                RenameChannelDialog(
+                    channel = target,
+                    onSubmit = { newName ->
+                        viewModel.renameChannel(target, newName)
+                        renameTarget = null
+                    },
+                    onDismiss = { renameTarget = null },
                 )
             }
             if (showQuickHint && content.itemCount > 0) {
@@ -250,16 +283,32 @@ private fun LiveFilterRail(
 private fun ChannelList(
     content: LazyPagingItems<ChannelEntity>,
     guideByChannel: Map<Long, GuideRow>,
+    programmeHits: List<LiveTvViewModel.ProgrammeHit>,
     now: Long,
     onClick: (Long) -> Unit,
     onToggleFavorite: (ChannelEntity) -> Unit,
     favOverride: (Long) -> Boolean?,
+    canReorder: Boolean,
+    onMoveChannel: (ChannelEntity, Boolean) -> Unit,
+    onRenameChannel: (ChannelEntity) -> Unit,
+    onRestoreName: (ChannelEntity) -> Unit,
+    onHideChannel: (ChannelEntity) -> Unit,
 ) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
+        // Sólo con búsqueda activa: "cuándo echan X" antes que los canales.
+        if (programmeHits.isNotEmpty()) {
+            item(key = "programme_hits") {
+                ProgrammeHitsSection(
+                    hits = programmeHits,
+                    now = now,
+                    onHitClick = { hit -> hit.channelId?.let(onClick) },
+                )
+            }
+        }
         items(count = content.itemCount, key = content.itemKey { it.id }) { index ->
             content[index]?.let { raw ->
                 // Estrella optimista: no esperar al refresh de Paging.
@@ -269,8 +318,13 @@ private fun ChannelList(
                     channel = channel,
                     guide = guideByChannel[channel.id],
                     now = now,
+                    canReorder = canReorder,
                     onClick = { onClick(channel.id) },
                     onToggleFavorite = { onToggleFavorite(channel) },
+                    onMoveChannel = { up -> onMoveChannel(channel, up) },
+                    onRename = { onRenameChannel(channel) },
+                    onRestoreName = { onRestoreName(channel) },
+                    onHide = { onHideChannel(channel) },
                 )
             }
         }
@@ -283,15 +337,29 @@ private fun LiveChannelRow(
     channel: ChannelEntity,
     guide: GuideRow?,
     now: Long,
+    canReorder: Boolean,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onMoveChannel: (Boolean) -> Unit,
+    onRename: () -> Unit,
+    onRestoreName: () -> Unit,
+    onHide: () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Graphite),
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp).clickable(onClick = onClick),
-    ) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Graphite),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuOpen = true
+                    },
+                ),
+        ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -333,7 +401,160 @@ private fun LiveChannelRow(
                 )
             }
         }
+        }
+        // Menú contextual (pulsación larga): reordenar en favoritos o dentro
+        // de la categoría, renombrar (la guía sigue casando por el nombre del
+        // proveedor) y ocultar el canal de toda la app.
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            fun dismissAnd(action: () -> Unit): () -> Unit = { menuOpen = false; action() }
+            if (canReorder) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.catalog_channel_move_up)) },
+                    leadingIcon = { Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null) },
+                    onClick = dismissAnd { onMoveChannel(true) },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.catalog_channel_move_down)) },
+                    leadingIcon = { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null) },
+                    onClick = dismissAnd { onMoveChannel(false) },
+                )
+            }
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.catalog_channel_rename)) },
+                leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                onClick = dismissAnd(onRename),
+            )
+            if (channel.name != channel.providerName) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.catalog_channel_restore_name)) },
+                    leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                    onClick = dismissAnd(onRestoreName),
+                )
+            }
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.catalog_channel_hide)) },
+                leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
+                onClick = dismissAnd(onHide),
+            )
+        }
     }
+}
+
+/** Resultados "cuándo lo echan": emisiones de la guía sobre la lista de canales. */
+@Composable
+private fun ProgrammeHitsSection(
+    hits: List<LiveTvViewModel.ProgrammeHit>,
+    now: Long,
+    onHitClick: (LiveTvViewModel.ProgrammeHit) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)) {
+        Text(
+            text = stringResource(R.string.catalog_programmes_header),
+            style = MaterialTheme.typography.labelLarge,
+            color = Carmine,
+        )
+        Spacer(Modifier.height(4.dp))
+        hits.forEach { hit ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Graphite)
+                    .clickable(enabled = hit.channelId != null) { onHitClick(hit) }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = hit.title,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = buildString {
+                            append(programmeTimeLabel(hit, now))
+                            hit.channelName?.let { append(" · ").append(it) }
+                            if (hit.channelCount > 1) {
+                                append(" · ").append(
+                                    stringResource(
+                                        R.string.catalog_programme_channels,
+                                        hit.channelCount,
+                                    ),
+                                )
+                            }
+                        },
+                        color = if (hit.startUtc <= now) Carmine else MutedText,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun programmeTimeLabel(hit: LiveTvViewModel.ProgrammeHit, now: Long): String {
+    if (hit.startUtc <= now) return stringResource(R.string.catalog_programme_now)
+    val start = Date(hit.startUtc)
+    val today = java.util.Calendar.getInstance().apply { time = Date(now) }
+    val airing = java.util.Calendar.getInstance().apply { time = start }
+    val sameDay = today.get(java.util.Calendar.YEAR) == airing.get(java.util.Calendar.YEAR) &&
+        today.get(java.util.Calendar.DAY_OF_YEAR) == airing.get(java.util.Calendar.DAY_OF_YEAR)
+    val tomorrow = (today.clone() as java.util.Calendar)
+        .apply { add(java.util.Calendar.DAY_OF_YEAR, 1) }
+    val isTomorrow = tomorrow.get(java.util.Calendar.YEAR) == airing.get(java.util.Calendar.YEAR) &&
+        tomorrow.get(java.util.Calendar.DAY_OF_YEAR) == airing.get(java.util.Calendar.DAY_OF_YEAR)
+    return when {
+        sameDay -> stringResource(
+            R.string.catalog_programme_today,
+            formatTime(hit.startUtc),
+        )
+        isTomorrow -> stringResource(
+            R.string.catalog_programme_tomorrow,
+            formatTime(hit.startUtc),
+        )
+        else -> DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+            .format(start)
+    }
+}
+
+@Composable
+private fun RenameChannelDialog(
+    channel: ChannelEntity,
+    onSubmit: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember(channel.id) { mutableStateOf(channel.name) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.catalog_rename_title)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                label = { Text(stringResource(R.string.catalog_rename_field)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSubmit(name) },
+                enabled = name.isNotBlank(),
+            ) {
+                Text(stringResource(R.string.catalog_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.catalog_cancel))
+            }
+        },
+    )
 }
 
 @Composable

@@ -5,6 +5,19 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 
 ## [Unreleased]
 
+### Añadido
+- Búsqueda dentro de la guía: al buscar en TV en directo aparece una sección
+  "En la guía" con las emisiones en curso o futuras que coinciden con el
+  título, su canal y cuándo empiezan ("Ahora", "Hoy · 21:30", "Mañana…").
+  Si el programa se emite en varios canales se agrupa en una sola fila.
+- Personalización de canales (pulsación larga en la lista de TV): renombrar
+  (la guía sigue casando por el nombre del proveedor), ocultar el canal en
+  toda la app —reversible desde Ajustes— y subir/bajar su posición dentro de
+  favoritos o de su categoría.
+- Renombrar categorías desde la gestión de categorías en Ajustes, con opción
+  de restaurar el nombre original. Los renombres, ocultaciones y órdenes
+  manuales sobreviven a las resincronizaciones del proveedor.
+
 ### Otras
 
 - Configurado `debugSymbolLevel=FULL` en release: los símbolos nativos se

@@ -96,6 +96,11 @@
     <string name="category_hide">Hide</string>
     <string name="category_move_up">Move up</string>
     <string name="category_move_down">Move down</string>
+    <string name="category_rename">Rename</string>
+    <string name="category_rename_title">Rename category</string>
+    <string name="category_rename_field">Name</string>
+    <string name="category_restore_name">Restore original name</string>
+    <string name="settings_hidden_channels">Hidden channels</string>
     <string name="settings_about_title">About</string>
     <string name="settings_version">Version</string>
     <string name="settings_licenses">Open-source licenses</string>

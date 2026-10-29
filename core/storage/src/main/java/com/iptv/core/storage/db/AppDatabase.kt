@@ -16,6 +16,7 @@ import com.iptv.core.storage.entity.ChannelStagingEntity
 import com.iptv.core.storage.entity.DownloadEntity
 import com.iptv.core.storage.entity.PlaybackHistoryEntity
 import com.iptv.core.storage.entity.ProgrammeEntity
+import com.iptv.core.storage.entity.ProgrammeFtsEntity
 import com.iptv.core.storage.entity.SourceEntity
 
 @Database(
@@ -28,9 +29,10 @@ import com.iptv.core.storage.entity.SourceEntity
         ChannelStagingEntity::class,
         CategoryStagingEntity::class,
         ChannelFtsEntity::class,
+        ProgrammeFtsEntity::class,
         DownloadEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
