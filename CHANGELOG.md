@@ -17,6 +17,9 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 - Recuperación automática cuando el proveedor anuncia un formato distinto al
   real (p. ej. vídeo TS servido en una URL .m3u8): el reproductor lo detecta
   y reintenta una vez con el formato correcto en vez de mostrar error.
+- Las descargas de vídeo en formato HLS (.m3u8) fallan ahora con un motivo
+  claro en vez de guardar un fichero inservible que además seguía consumiendo
+  red al reproducirse.
 
 ### Otras
 

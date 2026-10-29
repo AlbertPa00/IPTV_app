@@ -44,6 +44,12 @@ class WorkManagerDownloadController @Inject constructor(
         val existing = downloadDao.findByChannel(channelId)
         // Ya descargado o en vuelo: no re-encolar (cancel se hace por cancel()).
         if (existing != null && existing.status != DownloadStatus.FAILED) return
+        // HLS (.m3u8) no es descargable byte a byte: el fichero guardado sería
+        // el texto del manifiesto, no el vídeo, y "reproducirlo" seguiría
+        // tirando de red para los segmentos. Se falla temprano con motivo
+        // claro hasta que exista descarga segmentada o remux a mp4.
+        val isSegmented =
+            DownloadFiles.extensionOf(channel.streamUrl).equals("m3u8", ignoreCase = true)
         val now = System.currentTimeMillis()
         val row = DownloadEntity(
             id = existing?.id ?: 0,
@@ -60,12 +66,15 @@ class WorkManagerDownloadController @Inject constructor(
             referrer = channel.referrer
                 ?: sourceDao.findById(channel.sourceId)?.referrer,
             localPath = if (existing?.status == DownloadStatus.DONE) existing.localPath else null,
-            status = DownloadStatus.QUEUED,
+            status = if (isSegmented) DownloadStatus.FAILED else DownloadStatus.QUEUED,
+            errorDetail = if (isSegmented) "Formato HLS no descargable" else null,
             createdAt = existing?.createdAt ?: now,
             updatedAt = now,
         )
         val id = downloadDao.upsert(row)
-        enqueueWork(row.copy(id = if (row.id == 0L) id else row.id), ExistingWorkPolicy.REPLACE)
+        if (!isSegmented) {
+            enqueueWork(row.copy(id = if (row.id == 0L) id else row.id), ExistingWorkPolicy.REPLACE)
+        }
     }
 
     private fun enqueueWork(download: DownloadEntity, policy: ExistingWorkPolicy) {
