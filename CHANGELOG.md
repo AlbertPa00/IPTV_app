@@ -14,6 +14,9 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   MPEG-2 por software).
 - Zapping más rápido: el reproductor reutiliza la conexión de red al cambiar
   entre canales del mismo proveedor.
+- Recuperación automática cuando el proveedor anuncia un formato distinto al
+  real (p. ej. vídeo TS servido en una URL .m3u8): el reproductor lo detecta
+  y reintenta una vez con el formato correcto en vez de mostrar error.
 
 ### Otras
 

@@ -1,6 +1,7 @@
 package com.iptv.feature.player.cast
 
 import android.util.Log
+import androidx.media3.common.MimeTypes
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -18,7 +19,14 @@ import java.util.concurrent.TimeUnit
  */
 object CastStreamProber {
 
-    enum class Kind { HLS, TS, MP4, DASH, UNKNOWN }
+    /** MIME declarable a un player; null cuando el payload no identifica nada. */
+    enum class Kind(val mimeType: String?) {
+        HLS(MimeTypes.APPLICATION_M3U8),
+        TS(MimeTypes.VIDEO_MP2T),
+        MP4(MimeTypes.VIDEO_MP4),
+        DASH(MimeTypes.APPLICATION_MPD),
+        UNKNOWN(null),
+    }
 
     private const val SNIFF_BYTES = 512
     private const val TS_SYNC: Byte = 0x47

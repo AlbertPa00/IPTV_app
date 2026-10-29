@@ -139,6 +139,9 @@ class PlayerViewModel @Inject constructor(
     /** One-shot guard: remux failures retry once with audio transcode. */
     private var transcodeEscalated = false
 
+    /** One-shot guard: format errors retry once with a sniffed MIME. */
+    private var mimeRetried = false
+
     /** Orden de canales en directo de la fuente activa para el zapping. */
     private var channelOrder: List<Long> = emptyList()
 
@@ -304,6 +307,7 @@ class PlayerViewModel @Inject constructor(
                 Log.w(TAG, "Local error while casting: ${error.errorCodeName}")
                 return
             }
+            if (sniffRetry(error)) return
             if (PlaybackResilience.isRetriableError(error.errorCode, httpStatusOf(error)) &&
                 scheduleReconnect()
             ) {
@@ -385,6 +389,32 @@ class PlayerViewModel @Inject constructor(
         if (_uiState.value.reconnectAttempt != null) {
             _uiState.update { it.copy(reconnectAttempt = null) }
         }
+    }
+
+    /**
+     * Los paneles que sirven TS en URLs .m3u8 (o mienten el formato) rompen el
+     * parser del manifiesto/contenedor: se reintenta una vez con el MIME que
+     * revela el propio payload. Sin coste cuando el servidor es honesto.
+     */
+    private fun sniffRetry(error: PlaybackException): Boolean {
+        if (mimeRetried ||
+            mediaItem?.localConfiguration?.uri?.scheme == "file" ||
+            (error.errorCode != PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED &&
+                error.errorCode != PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)
+        ) {
+            return false
+        }
+        mimeRetried = true
+        viewModelScope.launch {
+            val url = remoteUrl ?: return@launch
+            val mime = withContext(Dispatchers.IO) {
+                CastStreamProber.probe(url, castUserAgent, castReferrer).mimeType
+            } ?: return@launch
+            Log.w(TAG, "Retrying playback with sniffed mime $mime")
+            mediaItem = mediaItem?.buildUpon()?.setMimeType(mime)?.build()
+            retryLocalPlayback()
+        }
+        return true
     }
 
     /** Extrae el código HTTP si el fallo vino de una respuesta del servidor. */
@@ -672,6 +702,7 @@ class PlayerViewModel @Inject constructor(
         channelId = id
         downloadChannelId.value = id
         transcodeEscalated = false
+        mimeRetried = false
         activeCastHlsMode = null
         // El canal nuevo arranca su propio vigía y su propia reconexión,
         // sin heredar ni el tiempo ni los intentos del anterior.
