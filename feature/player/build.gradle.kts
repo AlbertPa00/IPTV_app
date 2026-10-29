@@ -37,6 +37,9 @@ dependencies {
 
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.exoplayer.dash)
+    implementation(libs.media3.exoplayer.rtsp)
+    implementation(libs.media3.datasource.okhttp)
     // Decodificador FFmpeg para AC3/EAC3/DTS: muchos streams IPTV los usan y
     // sin él hay vídeo sin audio en dispositivos sin esos códecs.
     implementation(libs.media3.decoder.ffmpeg)

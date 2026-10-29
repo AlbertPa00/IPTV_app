@@ -5,6 +5,16 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 
 ## [Unreleased]
 
+### Mejorado
+- El reproductor ahora admite streams DASH (.mpd) y RTSP (rtsp://), además de
+  HLS, MPEG-TS y MP4.
+- Menos consumo de batería al ver la tele: el audio estándar (AAC/MP3) vuelve
+  a decodificarse por hardware y FFmpeg queda como respaldo sólo cuando el
+  dispositivo no tiene códec nativo (AC3/EAC3/DTS; también cubre vídeo
+  MPEG-2 por software).
+- Zapping más rápido: el reproductor reutiliza la conexión de red al cambiar
+  entre canales del mismo proveedor.
+
 ### Otras
 
 - Configurado `debugSymbolLevel=FULL` en release: los símbolos nativos se

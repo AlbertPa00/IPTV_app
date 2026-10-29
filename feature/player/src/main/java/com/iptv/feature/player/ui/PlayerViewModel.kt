@@ -16,8 +16,8 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -67,6 +67,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 
 /** Reproducción local/Cast. Ambos players pertenecen al ViewModel y se liberan en onCleared. */
 @kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -82,6 +83,7 @@ class PlayerViewModel @Inject constructor(
     private val downloadController: DownloadController,
     private val pipController: PipController,
     private val prefs: AppPreferences,
+    private val okHttpClient: OkHttpClient,
 ) : ViewModel() {
 
     data class UiState(
@@ -567,23 +569,25 @@ class PlayerViewModel @Inject constructor(
         castUserAgent = userAgent
         castReferrer = referrer
 
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(userAgent)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(30_000)
-        referrer?.let { httpFactory.setDefaultRequestProperties(mapOf("Referer" to it)) }
+        // OkHttpDataSource comparte el pool del cliente inyectado: el zapping
+        // reutiliza la conexión al mismo host en vez de rehacer TCP+TLS.
+        val httpFactory = OkHttpDataSource.Factory(okHttpClient)
+            .setDefaultRequestProperties(buildMap {
+                put("User-Agent", userAgent)
+                referrer?.let { put("Referer", it) }
+            })
 
         bufferParams = PlaybackResilience.bufferParams(prefs.bufferProfile())
         val item = buildMediaItem(channel, isLive)
         mediaItem = item
         remoteUrl = channel.streamUrl
-        // EXTENSION_RENDERER_MODE_PREFER: usa el decodificador FFmpeg cuando el
-        // dispositivo no tiene códec nativo (AC3/EAC3/DTS, habitual en IPTV).
-        // DefaultDataSource delega file:// a FileDataSource (descargas) y
-        // http(s):// a la fábrica HTTP configurada arriba.
+        // EXTENSION_RENDERER_MODE_ON: FFmpeg sólo cuando no hay códec nativo
+        // (AC3/EAC3/DTS, habitual en IPTV); con PREFER también decodificaría
+        // AAC por software y quemaría batería. DefaultDataSource delega
+        // file:// a FileDataSource (descargas) y http(s):// a la fábrica
+        // HTTP configurada arriba.
         val renderersFactory = DefaultRenderersFactory(appContext)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         // ForStreaming: las descargas (file://) son "local playback" y
         // mantienen sus defaults rápidos; sólo se toca el stream por red.
         val loadControl = DefaultLoadControl.Builder()
