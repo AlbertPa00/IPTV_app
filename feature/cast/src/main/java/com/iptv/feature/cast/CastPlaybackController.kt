@@ -267,7 +267,7 @@ class CastPlaybackController @Inject constructor(
                 StreamProber.Kind.HLS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, null)
                 // Raw TS live → remux to HLS through ffmpeg (keyframe-aligned
                 // segments, far more reliable than naive packet cuts).
-                StreamProber.Kind.TS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, hlsModeOverride ?: "r")
+                StreamProber.Kind.TS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, hlsModeOverride ?: defaultHlsMode())
                 StreamProber.Kind.MP4 -> CastTarget(url, MimeTypes.VIDEO_MP4, null)
                 StreamProber.Kind.DASH -> CastTarget(url, MimeTypes.APPLICATION_MPD, null)
                 StreamProber.Kind.UNKNOWN -> null
@@ -281,8 +281,16 @@ class CastPlaybackController @Inject constructor(
         return CastTarget(
             url,
             if (needsWrap) MimeTypes.APPLICATION_M3U8 else mime,
-            if (needsWrap) hlsModeOverride ?: "r" else null,
+            if (needsWrap) hlsModeOverride ?: defaultHlsMode() else null,
         )
+    }
+
+    /** "r" (ffmpeg remux) si la nativa existe; "n" (cortador en memoria) en
+     *  dispositivos 32-bit, donde ffmpeg-kit no se instala. */
+    private fun defaultHlsMode(): String {
+        val ok = FfmpegHlsSession.isNativeAvailable(appContext)
+        if (!ok) Log.w(TAG, "ffmpeg native missing (32-bit device) — using in-memory TS cutter")
+        return if (ok) "r" else "n"
     }
 
     /** Termina la sesión y devuelve la reproducción al local. */

@@ -22,6 +22,9 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   red al reproducirse.
 - Emitir al televisor tarda menos al volver a un canal ya enviado: el
   resultado del análisis del stream queda memorizado durante la sesión.
+- Corregido el envío a Chromecast de canales TS en directo en teléfonos de
+  32 bits, donde fallaba siempre (FFmpegKit sólo distribuye binarios de
+  64 bits): ahora recurre al cortador de paquetes en memoria.
 
 ### Otras
 
