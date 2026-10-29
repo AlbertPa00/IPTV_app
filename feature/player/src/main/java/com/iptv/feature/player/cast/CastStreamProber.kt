@@ -38,10 +38,26 @@ object CastStreamProber {
         .build()
 
     /**
+     * Resultados por (url, UA, referer): re-sondear la misma URL repetiría la
+     * petición en vano (zapping Cast, reintentos locales). Vive en el objeto,
+     * es decir en el proceso; cada entrada pesa ~100 bytes por URL.
+     */
+    private val cache = java.util.concurrent.ConcurrentHashMap<Triple<String, String, String>, Kind>()
+
+    /**
      * Fetches the first bytes of [url] and sniffs the payload.
      * Never throws; returns [Kind.UNKNOWN] on any failure.
      */
-    fun probe(url: String, userAgent: String, referrer: String?): Kind = runCatching {
+    fun probe(url: String, userAgent: String, referrer: String?): Kind {
+        val key = Triple(url, userAgent, referrer.orEmpty())
+        return cache[key] ?: doProbe(url, userAgent, referrer).also { kind ->
+            // UNKNOWN suele ser fallo transitorio (timeout, red caída): no se
+            // cachea para que el próximo intento sondee de verdad.
+            if (kind != Kind.UNKNOWN) cache[key] = kind
+        }
+    }
+
+    private fun doProbe(url: String, userAgent: String, referrer: String?): Kind = runCatching {
         val request = Request.Builder().url(url)
             .header("User-Agent", userAgent)
             .header("Range", "bytes=0-4095")

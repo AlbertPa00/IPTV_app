@@ -20,6 +20,8 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 - Las descargas de vídeo en formato HLS (.m3u8) fallan ahora con un motivo
   claro en vez de guardar un fichero inservible que además seguía consumiendo
   red al reproducirse.
+- Emitir al televisor tarda menos al volver a un canal ya enviado: el
+  resultado del análisis del stream queda memorizado durante la sesión.
 
 ### Otras
 
