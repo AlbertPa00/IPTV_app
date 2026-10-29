@@ -1,4 +1,4 @@
-package com.iptv.feature.player.cast
+package com.iptv.core.network
 
 import android.net.Uri
 

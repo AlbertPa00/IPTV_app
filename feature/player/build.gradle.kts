@@ -45,11 +45,10 @@ dependencies {
     implementation(libs.media3.decoder.ffmpeg)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
-    implementation(libs.media3.cast)
+    // Cast SDK sólo para CastRouteButton (pegamento de UI); la orquestación
+    // vive en :feature:cast tras el contrato core.common.cast.CastController.
     implementation(libs.play.services.cast.framework)
     implementation(libs.androidx.appcompat)
-    implementation(libs.nanohttpd)
-    implementation(libs.ffmpegkit.https)
     implementation(libs.coil.compose)
 
     implementation(libs.hilt.android)

@@ -8,7 +8,7 @@
 
     <application>
         <service
-            android:name=".cast.CastProxyService"
+            android:name=".CastProxyService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
     </application>

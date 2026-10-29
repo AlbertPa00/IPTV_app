@@ -34,11 +34,11 @@ import com.iptv.core.storage.entity.DownloadSections
 import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.core.storage.entity.Kinds
 import com.iptv.core.storage.entity.PlaybackHistoryEntity
+import com.iptv.core.common.cast.CastController
+import com.iptv.core.common.cast.CastEvent
+import com.iptv.core.common.cast.CastStreamSpec
 import com.iptv.feature.player.R
-import com.iptv.feature.player.cast.CastEvent
-import com.iptv.feature.player.cast.CastPlaybackController
-import com.iptv.feature.player.cast.CastStreamProber
-import com.iptv.feature.player.cast.CastStreamSpec
+import com.iptv.core.network.StreamProber
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -75,6 +75,7 @@ class PlayerViewModel @Inject constructor(
     private val pipController: PipController,
     private val prefs: AppPreferences,
     private val okHttpClient: OkHttpClient,
+    private val castController: CastController,
 ) : ViewModel() {
 
     data class UiState(
@@ -111,9 +112,6 @@ class PlayerViewModel @Inject constructor(
     private var mediaItem: MediaItem? = null
     private var castUserAgent: String = DEFAULT_USER_AGENT
     private var castReferrer: String? = null
-
-    /** Orquestación Cast (sesión, proxy, transferencia local↔remoto). */
-    private val castController = CastPlaybackController(appContext)
 
     /**
      * URL remota del item en reproducción. Cuando el media local es un
@@ -367,7 +365,7 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             val url = remoteUrl ?: return@launch
             val mime = withContext(Dispatchers.IO) {
-                CastStreamProber.probe(url, castUserAgent, castReferrer).mimeType
+                StreamProber.probe(url, castUserAgent, castReferrer).mimeType
             } ?: return@launch
             Log.w(TAG, "Retrying playback with sniffed mime $mime")
             mediaItem = mediaItem?.buildUpon()?.setMimeType(mime)?.build()
@@ -585,7 +583,7 @@ class PlayerViewModel @Inject constructor(
         // El player remoto vive en el controller (ámbito de proceso); si ya
         // hay sesión activa se transfiere la reproducción en curso.
         castController.attach(newLocalPlayer)
-        mediaSession?.let { castController.setMediaSession(it) }
+        mediaSession?.let { castController.setMediaSessionToken(it.platformToken) }
         castController.setZapHandler { delta -> playAdjacent(delta) }
         if (castController.isSessionAvailable) {
             viewModelScope.launch {
@@ -843,7 +841,7 @@ class PlayerViewModel @Inject constructor(
         // El CastPlayer y la sesión son de proceso: detach() sólo suelta los
         // listeners de esta pantalla; emitir sigue vivo al salir y el proxy
         // lo desmonta el servicio cuando la sesión termina.
-        castController.setMediaSession(null)
+        castController.setMediaSessionToken(null)
         mediaSession?.release()
         mediaSession = null
         castController.detach()

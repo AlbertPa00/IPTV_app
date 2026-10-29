@@ -1,4 +1,4 @@
-package com.iptv.feature.player.cast
+package com.iptv.feature.player.ui
 
 import android.app.Activity
 import android.content.Context

@@ -1,4 +1,4 @@
-package com.iptv.feature.player.cast
+package com.iptv.feature.cast
 
 import android.content.Context
 import android.util.Log
@@ -8,13 +8,19 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.session.MediaSession
 import com.google.android.gms.cast.Cast
 import com.google.android.gms.cast.MediaError
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
+import com.iptv.core.common.cast.CastController
+import com.iptv.core.common.cast.CastEvent
+import com.iptv.core.common.cast.CastStreamSpec
+import com.iptv.core.common.cast.CastUiState
+import com.iptv.core.network.StreamProber
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,39 +33,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Datos del stream que el receptor debe cargar (URL remota + cabeceras). */
-data class CastStreamSpec(
-    val remoteUrl: String,
-    val userAgent: String,
-    val referrer: String?,
-    val channelTitle: String?,
-)
-
-data class CastUiState(
-    val available: Boolean = false,
-    val connecting: Boolean = false,
-    val casting: Boolean = false,
-    /** Carga en vuelo hacia el receptor (setMediaItem/prepare no confirmado). */
-    val transferPending: Boolean = false,
-    val deviceName: String? = null,
-    val receiverError: String? = null,
-)
-
-sealed interface CastEvent {
-    /** El remoto reproduce (transferencia nueva o sesión adoptada). */
-    data object RemoteActive : CastEvent
-
-    /** La reproducción debe volver al player local. */
-    data class LocalResume(
-        /** True si había remoto activo cuya posición conviene transferir. */
-        val transferFromRemote: Boolean,
-        /** Null = conservar el playWhenReady actual del local. */
-        val playWhenReady: Boolean?,
-        /** True = fallo del receptor: avisar y ofrecer "volver al móvil". */
-        val showError: Boolean,
-    ) : CastEvent
-}
-
 /**
  * Orquestación de la sesión Cast: transferencia local↔remoto, sondeo del
  * stream, proxy local y escalado remux→transcode. La máquina de estados vive
@@ -67,24 +40,24 @@ sealed interface CastEvent {
  * y los listeners del framework Cast quedan encapsulados.
  *
  * No libera nada al detacherse: la sesión Cast sobrevive a la pantalla.
+ * Sin scope: una instancia por consumidor (pantalla del player).
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class CastPlaybackController(
-    private val appContext: Context,
-) {
+class CastPlaybackController @Inject constructor(
+    @ApplicationContext private val appContext: Context,
+) : CastController {
 
     private val _uiState = MutableStateFlow(CastUiState())
-    val uiState = _uiState.asStateFlow()
+    override val uiState = _uiState.asStateFlow()
 
     private val _events = MutableSharedFlow<CastEvent>(extraBufferCapacity = 8)
-    val events = _events.asSharedFlow()
+    override val events = _events.asSharedFlow()
 
     private var castPlayer: RemoteCastPlayer? = null
     private var castContext: CastContext? = null
     private var localPlayer: Player? = null
     private var observedMediaClient: RemoteMediaClient? = null
     private var observedCastSession: CastSession? = null
-    private var mediaSession: MediaSession? = null
     private var onZap: ((Int) -> Unit)? = null
 
     private var lastItem: MediaItem? = null
@@ -98,17 +71,17 @@ class CastPlaybackController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _volume = MutableStateFlow(1f)
-    val volume = _volume.asStateFlow()
+    override val volume = _volume.asStateFlow()
     private val _muted = MutableStateFlow(false)
-    val muted = _muted.asStateFlow()
+    override val muted = _muted.asStateFlow()
 
-    val remotePlayer: Player? get() = castPlayer
-    val isSessionAvailable: Boolean get() = castPlayer?.isCastSessionAvailable == true
+    override val remotePlayer: Player? get() = castPlayer
+    override val isSessionAvailable: Boolean get() = castPlayer?.isCastSessionAvailable == true
 
     // -- Ciclo de vida ------------------------------------------------------
 
     /** Crea el RemoteCastPlayer de proceso si hace falta y engancha listeners. */
-    fun attach(local: Player) {
+    override fun attach(local: Player) {
         localPlayer = local
         val created = CastPlayerRuntime.castPlayer(appContext)
         if (created == null) {
@@ -129,7 +102,7 @@ class CastPlaybackController(
      * Desengancha listeners de la pantalla. Ni el player ni el proxy se
      * liberan: la sesión Cast sigue viva tras salir (la gestiona el servicio).
      */
-    fun detach() {
+    override fun detach() {
         localPlayer = null
         onZap = null
         CastProxyRuntime.onZap = null
@@ -145,12 +118,11 @@ class CastPlaybackController(
         scope.cancel()
     }
 
-    fun setMediaSession(session: MediaSession?) {
-        mediaSession = session
-        CastProxyRuntime.mediaSession = session
+    override fun setMediaSessionToken(token: android.media.session.MediaSession.Token?) {
+        CastProxyRuntime.sessionToken = token
     }
 
-    fun setZapHandler(handler: ((Int) -> Unit)?) {
+    override fun setZapHandler(handler: ((Int) -> Unit)?) {
         onZap = handler
         CastProxyRuntime.onZap = handler
     }
@@ -162,7 +134,7 @@ class CastPlaybackController(
      * stream, o carga el item vía proxy local. Emite RemoteActive al
      * completar o LocalResume si falla.
      */
-    suspend fun transferToCast(
+    override suspend fun transferToCast(
         item: MediaItem,
         positionMs: Long,
         playWhenReady: Boolean,
@@ -198,7 +170,7 @@ class CastPlaybackController(
     }
 
     /** Recarga el item en el receptor (zapping con sesión activa). */
-    suspend fun loadOnRemote(item: MediaItem, spec: CastStreamSpec) {
+    override suspend fun loadOnRemote(item: MediaItem, spec: CastStreamSpec) {
         lastItem = item
         lastSpec = spec
         transcodeEscalated = false
@@ -289,16 +261,16 @@ class CastPlaybackController(
             listOf(hlsVariant, originalUrl)
         }
         for (url in candidates) {
-            val kind = CastStreamProber.probe(url, spec.userAgent, spec.referrer)
+            val kind = StreamProber.probe(url, spec.userAgent, spec.referrer)
             Log.d(TAG, "Probe $url -> $kind")
             val target = when (kind) {
-                CastStreamProber.Kind.HLS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, null)
+                StreamProber.Kind.HLS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, null)
                 // Raw TS live → remux to HLS through ffmpeg (keyframe-aligned
                 // segments, far more reliable than naive packet cuts).
-                CastStreamProber.Kind.TS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, hlsModeOverride ?: "r")
-                CastStreamProber.Kind.MP4 -> CastTarget(url, MimeTypes.VIDEO_MP4, null)
-                CastStreamProber.Kind.DASH -> CastTarget(url, MimeTypes.APPLICATION_MPD, null)
-                CastStreamProber.Kind.UNKNOWN -> null
+                StreamProber.Kind.TS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, hlsModeOverride ?: "r")
+                StreamProber.Kind.MP4 -> CastTarget(url, MimeTypes.VIDEO_MP4, null)
+                StreamProber.Kind.DASH -> CastTarget(url, MimeTypes.APPLICATION_MPD, null)
+                StreamProber.Kind.UNKNOWN -> null
             }
             if (target != null) return target
         }
@@ -314,7 +286,7 @@ class CastPlaybackController(
     }
 
     /** Termina la sesión y devuelve la reproducción al local. */
-    fun endSession() {
+    override fun endSession() {
         val wasCasting = _uiState.value.casting
         castTransferPending = false
         CastPlayerRuntime.clearLoaded()
@@ -328,13 +300,13 @@ class CastPlaybackController(
         runCatching { castContext?.sessionManager?.endCurrentSession(true) }
     }
 
-    fun clearReceiverError() {
+    override fun clearReceiverError() {
         _uiState.update { it.copy(receiverError = null) }
     }
 
     // -- Volumen del receptor -----------------------------------------------
 
-    fun refreshCastVolume() {
+    override fun refreshCastVolume() {
         val session = runCatching {
             castContext?.sessionManager?.currentCastSession
         }.getOrNull() ?: return
@@ -342,7 +314,7 @@ class CastPlaybackController(
         _muted.value = session.isMute
     }
 
-    fun setVolume(volume: Float) {
+    override fun setVolume(volume: Float) {
         val v = volume.coerceIn(0f, 1f)
         _volume.value = v
         runCatching {
@@ -350,7 +322,7 @@ class CastPlaybackController(
         }
     }
 
-    fun setMuted(muted: Boolean) {
+    override fun setMuted(muted: Boolean) {
         _muted.value = muted
         runCatching {
             castContext?.sessionManager?.currentCastSession?.setMute(muted)

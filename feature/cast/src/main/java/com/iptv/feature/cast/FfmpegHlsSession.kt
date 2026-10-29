@@ -1,4 +1,4 @@
-package com.iptv.feature.player.cast
+package com.iptv.feature.cast
 
 import android.util.Log
 import com.arthenica.ffmpegkit.FFmpegKit

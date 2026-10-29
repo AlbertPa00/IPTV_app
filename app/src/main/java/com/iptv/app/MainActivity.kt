@@ -11,7 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.iptv.core.common.pip.PipController
 import com.iptv.core.designsystem.theme.IptvTheme
-import com.iptv.feature.player.cast.CastVolumeKeyHandler
+import com.iptv.feature.cast.CastVolumeKeyHandler
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 

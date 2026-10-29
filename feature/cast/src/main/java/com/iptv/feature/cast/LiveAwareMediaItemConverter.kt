@@ -1,4 +1,4 @@
-package com.iptv.feature.player.cast
+package com.iptv.feature.cast
 
 import androidx.media3.cast.DefaultMediaItemConverter
 import androidx.media3.cast.MediaItemConverter

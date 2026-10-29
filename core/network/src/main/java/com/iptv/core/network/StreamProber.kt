@@ -1,7 +1,6 @@
-package com.iptv.feature.player.cast
+package com.iptv.core.network
 
 import android.util.Log
-import androidx.media3.common.MimeTypes
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -13,18 +12,20 @@ import java.util.concurrent.TimeUnit
  * Probes the first bytes of a stream to learn what the server actually
  * serves. IPTV endpoints routinely lie: `.m3u8` URLs that return raw
  * MPEG-TS when the panel has HLS output disabled, extensionless URLs that
- * serve TS, `application/octet-stream` Content-Types, etc. Declaring the
- * wrong type to the Cast receiver is fatal — the URL's extension and the
- * Content-Type header are only hints; the payload prefix is the truth.
+ * serve TS, `application/octet-stream` Content-Types, etc. The URL's
+ * extension and the Content-Type header are only hints; the payload
+ * prefix is the truth.
  */
-object CastStreamProber {
+object StreamProber {
 
-    /** MIME declarable a un player; null cuando el payload no identifica nada. */
+    /** MIME declarable a un player; null cuando el payload no identifica nada.
+     *  (strings espejo de androidx.media3.common.MimeTypes; network no
+     *  depende de media3). */
     enum class Kind(val mimeType: String?) {
-        HLS(MimeTypes.APPLICATION_M3U8),
-        TS(MimeTypes.VIDEO_MP2T),
-        MP4(MimeTypes.VIDEO_MP4),
-        DASH(MimeTypes.APPLICATION_MPD),
+        HLS("application/x-mpegURL"),
+        TS("video/mp2t"),
+        MP4("video/mp4"),
+        DASH("application/dash+xml"),
         UNKNOWN(null),
     }
 
@@ -126,5 +127,5 @@ object CastStreamProber {
         }
     }
 
-    private const val TAG = "CastStreamProber"
+    private const val TAG = "StreamProber"
 }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cast_service_notification_title">Emitiendo a Chromecast</string>
+    <string name="cast_service_channel_name">Chromecast</string>
+    <string name="cast_service_stop">Detener emisión</string>
+    <string name="cast_service_previous_channel">Canal anterior</string>
+    <string name="cast_service_next_channel">Canal siguiente</string>
+    <string name="cast_service_pause">Pausar</string>
+    <string name="cast_service_play">Reproducir</string>
+</resources>

@@ -88,6 +88,7 @@ dependencies {
     implementation(project(":feature:catalog"))
     implementation(project(":feature:series"))
     implementation(project(":feature:player"))
+    implementation(project(":feature:cast"))
     implementation(project(":feature:epg"))
 
     implementation(platform(libs.compose.bom))
