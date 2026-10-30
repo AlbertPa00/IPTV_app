@@ -211,6 +211,11 @@ interface ChannelDao {
     @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT 1")
     suspend fun firstChannelId(sourceId: Long, kind: String): Long?
 
+    /** Valida el último canal visto para el arranque de TV: existe, es
+     *  en directo, de la fuente activa y no bloqueado/oculto. */
+    @Query("SELECT id FROM channels WHERE id = :id AND sourceId = :sourceId AND kind = 'LIVE' AND $UNLOCKED_ONLY")
+    suspend fun liveChannelIdOrNull(id: Long, sourceId: Long): Long?
+
     // -- Descargas ------------------------------------------------------------
     // El carrusel/parrilla "Descargados" une downloads→channels para reutilizar
     // las tarjetas del catálogo; el estado/progreso llega por DownloadDao.

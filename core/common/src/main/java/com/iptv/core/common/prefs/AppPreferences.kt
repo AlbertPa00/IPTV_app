@@ -119,6 +119,13 @@ class AppPreferences @Inject constructor(
         prefs.edit().putString(KEY_BUFFER_PROFILE, profile).apply()
     }
 
+    /** Último canal en directo visto: arranque "donde lo dejaste" en TV. */
+    fun lastLiveChannelId(): Long = prefs.getLong(KEY_LAST_LIVE_CHANNEL, -1L)
+
+    fun setLastLiveChannelId(id: Long) {
+        prefs.edit().putLong(KEY_LAST_LIVE_CHANNEL, id).apply()
+    }
+
     /** En directo: reintento continuo (sin tope) en lugar de capado a unos intentos. */
     val liveReconnectContinuous: Flow<Boolean> =
         booleanFlow(KEY_LIVE_RECONNECT_CONTINUOUS, default = false)
@@ -209,6 +216,7 @@ class AppPreferences @Inject constructor(
         const val KEY_EPG_LAST_SYNC = "epg_last_sync_at"
         const val KEY_BUFFER_PROFILE = "buffer_profile"
         const val KEY_LIVE_RECONNECT_CONTINUOUS = "live_reconnect_continuous"
+        const val KEY_LAST_LIVE_CHANNEL = "last_live_channel_id"
         const val BUFFER_AUTO = "auto"
         const val BUFFER_LOW = "low"
         const val BUFFER_HIGH = "high"

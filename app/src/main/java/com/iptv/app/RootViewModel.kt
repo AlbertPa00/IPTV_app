@@ -46,13 +46,17 @@ class RootViewModel @Inject constructor(
     }
 
     /**
-     * Canal con el que abre la shell de TV: el primer canal en directo de
-     * la fuente activa (las TVs abren viendo, no navegando). Null si la
-     * fuente no tiene canales — el arranque cae entonces al alta/ajustes.
+     * Canal con el que abre la shell de TV: el último canal en directo
+     * visto si sigue existiendo y visible; si no, el primero de la fuente
+     * activa (las TVs abren viendo, no navegando). Null si la fuente no
+     * tiene canales — el arranque cae entonces al alta/ajustes.
      */
     suspend fun resolveTvStartChannel(): Long? {
         val source = sourceDao.observeActive().first() ?: return null
-        return channelDao.firstChannelId(source.id, Kinds.LIVE)
+        val lastId = appPreferences.lastLiveChannelId()
+        val last = if (lastId > 0) channelDao.liveChannelIdOrNull(lastId, source.id) else null
+        return last
+            ?: channelDao.firstChannelId(source.id, Kinds.LIVE)
             ?: channelDao.firstChannelId(source.id, Kinds.VOD)
     }
 

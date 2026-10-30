@@ -605,6 +605,8 @@ class PlayerViewModel @Inject constructor(
             // apertura del reproductor era el mayor coste del arranque.
             channelOrder = channelDao.channelIds(channel.sourceId, Kinds.LIVE)
             _hasChannelList.value = channelOrder.size > 1
+            // Arranque de TV "donde lo dejaste": el último canal visto.
+            prefs.setLastLiveChannelId(channel.id)
         }
         val isLive = channel.kind == Kinds.LIVE
         _uiState.update { it.copy(channel = channel, isLive = isLive) }
