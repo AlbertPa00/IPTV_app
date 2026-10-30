@@ -73,6 +73,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.iptv.core.designsystem.components.EmptyState
 import com.iptv.core.designsystem.components.LoadingState
+import com.iptv.core.designsystem.tv.LocalIsTv
 import com.iptv.core.designsystem.tv.tvFocusAffordance
 import com.iptv.core.storage.dao.GuideRow
 import com.iptv.core.storage.entity.CategoryEntity
@@ -234,7 +235,8 @@ fun LiveTvScreen(
                     onDismiss = { renameTarget = null },
                 )
             }
-            if (showQuickHint && content.itemCount > 0) {
+            // Hint de onboarding táctil ("toca un canal"): en TV no aplica.
+            if (showQuickHint && !LocalIsTv.current && content.itemCount > 0) {
                 QuickHintBanner(
                     text = stringResource(R.string.catalog_quick_hint),
                     onClose = viewModel::markQuickHintSeen,
