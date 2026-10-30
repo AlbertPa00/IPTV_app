@@ -81,6 +81,9 @@ media3-exoplayer-rtsp = { group = "androidx.media3", name = "media3-exoplayer-rt
 # (reuso entre zaps al mismo host y una sola capa de timeouts/interceptores).
 media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3" }
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+# Controles Compose nativos de Media3: PlayerSurface + state holders
+# (sustituye a AndroidView(PlayerView) y al polling manual de posición).
+media3-ui-compose = { group = "androidx.media3", name = "media3-ui-compose", version.ref = "media3" }
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 media3-cast = { group = "androidx.media3", name = "media3-cast", version.ref = "media3" }
 # Binario del decoder FFmpeg de Media3 publicado por Jellyfin (Google no lo

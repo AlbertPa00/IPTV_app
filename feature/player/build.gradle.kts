@@ -44,6 +44,7 @@ dependencies {
     // sin él hay vídeo sin audio en dispositivos sin esos códecs.
     implementation(libs.media3.decoder.ffmpeg)
     implementation(libs.media3.ui)
+    implementation(libs.media3.ui.compose)
     implementation(libs.media3.session)
     // Cast SDK sólo para CastRouteButton (pegamento de UI); la orquestación
     // vive en :feature:cast tras el contrato core.common.cast.CastController.

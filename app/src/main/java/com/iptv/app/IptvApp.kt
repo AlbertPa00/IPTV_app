@@ -1,6 +1,7 @@
 package com.iptv.app
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -45,6 +47,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.NavType
 import com.iptv.core.designsystem.components.LoadingState
+import com.iptv.core.designsystem.tv.LocalIsTv
 import com.iptv.feature.catalog.ui.ContentKind
 import com.iptv.feature.catalog.ui.VodCatalogViewModel
 import com.iptv.feature.catalog.ui.LiveTvScreen
@@ -52,6 +55,7 @@ import com.iptv.feature.catalog.ui.MovieDetailsScreen
 import com.iptv.feature.catalog.ui.VodCatalogScreen
 import com.iptv.feature.epg.ui.GuideScreen
 import com.iptv.feature.player.ui.PlayerScreen
+import com.iptv.feature.player.tv.TvPlayerScreen
 import com.iptv.feature.series.ui.SeriesDetailsScreen
 import com.iptv.feature.source.ui.AddSourceScreen
 import com.iptv.feature.source.ui.OnboardingScreen
@@ -96,7 +100,10 @@ private val mainDestinations = listOf(
 // al entrar/salir de fichas y del reproductor.
 
 @Composable
-fun IptvApp(viewModel: RootViewModel = hiltViewModel()) {
+fun IptvApp(
+    isTv: Boolean,
+    viewModel: RootViewModel = hiltViewModel(),
+) {
     val hasSources by viewModel.hasSources.collectAsStateWithLifecycle()
     val onboardingDone by viewModel.onboardingCompleted.collectAsStateWithLifecycle()
     val navController = rememberNavController()
@@ -111,17 +118,27 @@ fun IptvApp(viewModel: RootViewModel = hiltViewModel()) {
         val sources = hasSources
         val done = onboardingDone
         if (startRoute == null && sources != null && done != null) {
-            startRoute = if (sources == true || done == true) Routes.Home else Routes.Onboarding
+            startRoute = when {
+                // Shell de TV player-first: con fuentes se abre reproduciendo
+                // el primer canal directo; sin ellas cae al alta/onboarding.
+                isTv && sources == true -> viewModel.resolveTvStartChannel()
+                    ?.let(Routes::player) ?: Routes.Home
+                sources == true || done == true -> Routes.Home
+                else -> Routes.Onboarding
+            }
         }
     }
 
     when (val route = startRoute) {
         null -> LoadingState()
-        else -> AppNavigation(
-            navController = navController,
-            startDestination = route,
-            onOnboardingComplete = viewModel::completeOnboarding,
-        )
+        else -> CompositionLocalProvider(LocalIsTv provides isTv) {
+            AppNavigation(
+                navController = navController,
+                startDestination = route,
+                isTv = isTv,
+                onOnboardingComplete = viewModel::completeOnboarding,
+            )
+        }
     }
 }
 
@@ -129,6 +146,7 @@ fun IptvApp(viewModel: RootViewModel = hiltViewModel()) {
 private fun AppNavigation(
     navController: NavHostController,
     startDestination: String,
+    isTv: Boolean,
     onOnboardingComplete: () -> Unit,
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -208,7 +226,18 @@ private fun AppNavigation(
                 route = Routes.Player,
                 arguments = listOf(navArgument("channelId") { type = NavType.LongType }),
             ) {
-                PlayerScreen(onBack = { navController.popBackStack() })
+                if (isTv) {
+                    // En TV el reproductor es la raíz: si no hay nada que
+                    // desapilar, atrás sale de la app.
+                    val activity = LocalActivity.current
+                    TvPlayerScreen(
+                        onExit = {
+                            if (!navController.popBackStack()) activity?.finish()
+                        },
+                    )
+                } else {
+                    PlayerScreen(onBack = { navController.popBackStack() })
+                }
             }
             composable(
                 route = Routes.SeriesDetails,

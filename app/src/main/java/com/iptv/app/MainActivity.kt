@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.iptv.core.common.pip.PipController
+import com.iptv.core.common.platform.isTelevision
 import com.iptv.core.designsystem.theme.IptvTheme
 import com.iptv.feature.cast.CastVolumeKeyHandler
 import dagger.hilt.android.AndroidEntryPoint
@@ -26,7 +27,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             IptvTheme {
-                IptvApp()
+                IptvApp(isTv = isTelevision())
             }
         }
     }

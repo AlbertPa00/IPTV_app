@@ -199,6 +199,10 @@ interface ChannelDao {
     @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = :kind AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     suspend fun channelIds(sourceId: Long, kind: String): List<Long>
 
+    /** Primer canal reproducible del tipo dado: arranque directo en TV. */
+    @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT 1")
+    suspend fun firstChannelId(sourceId: Long, kind: String): Long?
+
     // -- Descargas ------------------------------------------------------------
     // El carrusel/parrilla "Descargados" une downloads→channels para reutilizar
     // las tarjetas del catálogo; el estado/progreso llega por DownloadDao.

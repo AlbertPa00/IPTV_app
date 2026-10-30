@@ -5,6 +5,15 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 
 ## [Unreleased]
 
+### Añadido
+- Android TV / Google TV / Fire TV: la app aparece en el launcher del
+  televisor con su banner y abre directamente reproduciendo el primer
+  canal en directo a pantalla completa.
+- Mando a distancia: canal +/- con las flechas arriba/abajo (zapping),
+  lista de canales con la flecha izquierda, tarjeta del canal con la
+  derecha o la tecla INFO, controles de reproducción con OK o MENU y
+  entrada directa de número de canal con las teclas numéricas.
+
 ### Corregido
 - Canales que no llegaban a emitir al Chromecast en cuentas con límite de
   conexiones del proveedor: el móvil ahora suelta su conexión antes de que

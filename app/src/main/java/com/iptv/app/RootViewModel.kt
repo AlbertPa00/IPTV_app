@@ -6,6 +6,7 @@ import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.ProgrammeDao
 import com.iptv.core.storage.dao.SourceDao
+import com.iptv.core.storage.entity.Kinds
 import com.iptv.feature.epg.data.EpgRepository
 import com.iptv.feature.source.data.SourceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -22,7 +24,7 @@ import javax.inject.Inject
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class RootViewModel @Inject constructor(
-    sourceDao: SourceDao,
+    private val sourceDao: SourceDao,
     private val channelDao: ChannelDao,
     private val programmeDao: ProgrammeDao,
     private val appPreferences: AppPreferences,
@@ -41,6 +43,17 @@ class RootViewModel @Inject constructor(
 
     fun completeOnboarding() {
         appPreferences.setOnboardingCompleted(true)
+    }
+
+    /**
+     * Canal con el que abre la shell de TV: el primer canal en directo de
+     * la fuente activa (las TVs abren viendo, no navegando). Null si la
+     * fuente no tiene canales — el arranque cae entonces al alta/ajustes.
+     */
+    suspend fun resolveTvStartChannel(): Long? {
+        val source = sourceDao.observeActive().first() ?: return null
+        return channelDao.firstChannelId(source.id, Kinds.LIVE)
+            ?: channelDao.firstChannelId(source.id, Kinds.VOD)
     }
 
     // Catálogo: una sola sincronización automática por fuente y sesión —
