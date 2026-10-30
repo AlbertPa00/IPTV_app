@@ -59,4 +59,5 @@
     <string name="player_download_delete_confirm">Se borrará el fichero descargado de este dispositivo.</string>
     <string name="player_guide_title">Guía</string>
     <string name="player_guide_empty">Sin datos de guía para esta fuente</string>
+    <string name="player_exit">Salir</string>
 </resources>

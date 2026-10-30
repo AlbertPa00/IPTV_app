@@ -59,4 +59,5 @@
     <string name="player_download_delete_confirm">The downloaded file will be removed from this device.</string>
     <string name="player_guide_title">Guide</string>
     <string name="player_guide_empty">No guide data for this source</string>
+    <string name="player_exit">Exit</string>
 </resources>

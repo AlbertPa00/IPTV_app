@@ -163,6 +163,28 @@ class TvKeyRouterTest {
         assertEquals(TvAction.CloseOverlay, perform(routeTvKey(down(TvKeys.BACK), guide)))
     }
 
+    // -- Menú contextual --------------------------------------------------------
+
+    @Test
+    fun `menu key opens the contextual menu and toggles it closed`() {
+        assertEquals(TvAction.OpenMenu, perform(routeTvKey(down(TvKeys.MENU), ctx())))
+        assertEquals(
+            TvAction.CloseOverlay,
+            perform(routeTvKey(down(TvKeys.MENU), ctx(overlay = TvOverlay.MENU))),
+        )
+    }
+
+    @Test
+    fun `arrows and center belong to focus inside the menu`() {
+        val menu = ctx(overlay = TvOverlay.MENU)
+        listOf(
+            TvKeys.DPAD_UP, TvKeys.DPAD_DOWN, TvKeys.DPAD_LEFT,
+            TvKeys.DPAD_RIGHT, TvKeys.DPAD_CENTER,
+        ).forEach { code ->
+            assertEquals("keyCode=$code", TvKeyResult.Ignore, routeTvKey(down(code), menu))
+        }
+    }
+
     // -- OSD numérico ---------------------------------------------------------
 
     @Test

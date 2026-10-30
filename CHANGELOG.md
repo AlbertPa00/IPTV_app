@@ -17,6 +17,9 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   continuación" sobre el vídeo con todos los canales, su programa en
   curso y el siguiente; la tarjeta post-zap también muestra qué se emite
   ahora y qué viene después.
+- Menú contextual en TV: la tecla MENU abre las acciones sobre el canal
+  en curso —lista de canales, guía, favorito, pistas de audio/subtítulos,
+  temporizador de apagado y salir— navegables con el mando.
 
 ### Corregido
 - Canales que no llegaban a emitir al Chromecast en cuentas con límite de

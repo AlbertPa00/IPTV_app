@@ -50,6 +50,8 @@ enum class TvOverlay {
     INFO,
     /** Panel EPG "ahora y a continuación" (tecla GUIDE). */
     GUIDE,
+    /** Menú contextual de acciones (tecla MENU). */
+    MENU,
     /** Entrada directa de número de canal. */
     NUMBER_OSD,
 }
@@ -67,6 +69,7 @@ sealed interface TvAction {
     data object OpenRail : TvAction
     data object OpenInfo : TvAction
     data object OpenGuide : TvAction
+    data object OpenMenu : TvAction
     data object TogglePlayPause : TvAction
     data class SeekBy(val deltaMs: Long) : TvAction
     data class ZapBy(val delta: Int) : TvAction
@@ -136,7 +139,10 @@ private fun routeTvKeyDown(key: TvKey, ctx: TvInputContext): TvKeyResult {
         TvKeys.GUIDE -> TvKeyResult.Perform(
             if (ctx.overlay == TvOverlay.GUIDE) TvAction.CloseOverlay else TvAction.OpenGuide,
         )
-        TvKeys.MENU -> TvKeyResult.Perform(TvAction.OpenControls)
+        // MENU es un conmutador del menú contextual, igual que GUIDE con la EPG.
+        TvKeys.MENU -> TvKeyResult.Perform(
+            if (ctx.overlay == TvOverlay.MENU) TvAction.CloseOverlay else TvAction.OpenMenu,
+        )
 
         TvKeys.BACK -> TvKeyResult.Perform(
             if (ctx.overlay != TvOverlay.NONE) TvAction.CloseOverlay else TvAction.Back,

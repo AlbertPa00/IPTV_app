@@ -64,12 +64,17 @@ import com.iptv.core.designsystem.components.IptvAsyncImage
 import com.iptv.core.designsystem.tv.tvSafeArea
 import com.iptv.feature.player.R
 import com.iptv.feature.player.ui.PlayerViewModel
+import com.iptv.feature.player.ui.SleepTimerDialog
+import com.iptv.feature.player.ui.TracksDialog
 import kotlinx.coroutines.delay
 
 private const val CONTROLS_HIDE_DELAY_MS = 8_000L
 private const val INFO_HIDE_DELAY_MS = 4_500L
 private const val OSD_CONFIRM_DELAY_MS = 2_500L
 private const val GUIDE_REFRESH_MS = 60_000L
+
+/** Diálogo modal abierto desde el menú contextual (vive fuera de overlays). */
+private enum class TvMenuDialog { TRACKS, SLEEP }
 
 /**
  * Shell de TV player-first: el vídeo es permanente y toda la navegación
@@ -108,6 +113,7 @@ fun TvPlayerScreen(
 
     var overlay by remember { mutableStateOf(TvOverlay.NONE) }
     var osdDigits by remember { mutableStateOf("") }
+    var menuDialog by remember { mutableStateOf<TvMenuDialog?>(null) }
     var lastInteractionAt by remember { mutableStateOf(System.currentTimeMillis()) }
 
     val activity = LocalContext.current.findActivity()
@@ -131,7 +137,11 @@ fun TvPlayerScreen(
     fun handleAction(action: TvAction) {
         when (action) {
             TvAction.OpenControls -> overlay = TvOverlay.CONTROLS
-            TvAction.CloseOverlay -> { overlay = TvOverlay.NONE; osdDigits = "" }
+            TvAction.CloseOverlay -> {
+                overlay = TvOverlay.NONE
+                osdDigits = ""
+                menuDialog = null
+            }
             TvAction.OpenRail -> {
                 viewModel.requestChannelList()
                 overlay = TvOverlay.RAIL
@@ -141,6 +151,7 @@ fun TvPlayerScreen(
                 viewModel.refreshGuide()
                 overlay = TvOverlay.GUIDE
             }
+            TvAction.OpenMenu -> overlay = TvOverlay.MENU
             TvAction.TogglePlayPause -> playPause?.onClick()
             is TvAction.SeekBy -> player?.let {
                 // TIME_UNSET en duration haría coerceIn lanzar (min > max).
@@ -372,6 +383,52 @@ fun TvPlayerScreen(
                     overlay = TvOverlay.INFO
                 },
             )
+        }
+
+        // Menú contextual (tecla MENU): acciones sobre la reproducción.
+        AnimatedVisibility(
+            visible = overlay == TvOverlay.MENU,
+            enter = slideInHorizontally { it },
+            exit = slideOutHorizontally { it },
+            modifier = Modifier.align(Alignment.CenterEnd),
+        ) {
+            TvMenuOverlay(
+                channelName = state.channel?.name.orEmpty(),
+                isFavorite = state.channel?.isFavorite == true,
+                onOpenRail = { handleAction(TvAction.OpenRail) },
+                onOpenGuide = { handleAction(TvAction.OpenGuide) },
+                onToggleFavorite = {
+                    viewModel.toggleFavorite()
+                    overlay = TvOverlay.NONE
+                },
+                onOpenTracks = {
+                    menuDialog = TvMenuDialog.TRACKS
+                    overlay = TvOverlay.NONE
+                },
+                onOpenSleepTimer = {
+                    menuDialog = TvMenuDialog.SLEEP
+                    overlay = TvOverlay.NONE
+                },
+                onExit = onExit,
+            )
+        }
+
+        // Diálogos lanzados desde el menú: ventana propia, el foco y el
+        // BACK los gestiona el propio AlertDialog.
+        when (menuDialog) {
+            TvMenuDialog.TRACKS -> TracksDialog(
+                player = player,
+                onDismiss = { menuDialog = null },
+            )
+            TvMenuDialog.SLEEP -> SleepTimerDialog(
+                endAtMs = state.sleepTimerEndAtMs,
+                onSelect = { minutes ->
+                    viewModel.setSleepTimer(minutes)
+                    menuDialog = null
+                },
+                onDismiss = { menuDialog = null },
+            )
+            null -> Unit
         }
 
         // Barra de transporte.
