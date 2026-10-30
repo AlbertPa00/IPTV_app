@@ -174,3 +174,31 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_downloads_section` ON `downloads` (`section`)")
     }
 }
+
+/**
+ * Personalización persistente de catálogo + búsqueda en la EPG.
+ *
+ * - `providerName`/`providerNameNorm` guardan el nombre que trajo el proveedor:
+ *   `name`/`nameNorm` quedan como copia del usuario y la sync los conserva
+ *   cuando divergen (mismo patrón que `isFavorite`).
+ * - `customOrder` (nullable) materializa el orden manual en favoritos y
+ *   dentro de categoría; `hidden` oculta un canal en toda la app.
+ * - `programmes_fts` permite buscar emisiones futuras por título.
+ *   El rebuild puede tardar segundos con una EPG grande ya importada.
+ */
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `categories` ADD COLUMN `providerName` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("UPDATE `categories` SET `providerName` = `name`")
+        db.execSQL("ALTER TABLE `channels` ADD COLUMN `providerName` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `channels` ADD COLUMN `providerNameNorm` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("UPDATE `channels` SET `providerName` = `name`, `providerNameNorm` = `nameNorm`")
+        db.execSQL("ALTER TABLE `channels` ADD COLUMN `customOrder` INTEGER")
+        db.execSQL("ALTER TABLE `channels` ADD COLUMN `hidden` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS `programmes_fts` " +
+                "USING FTS4(`title` TEXT NOT NULL, content=`programmes`)",
+        )
+        db.execSQL("INSERT INTO `programmes_fts`(`programmes_fts`) VALUES('rebuild')")
+    }
+}

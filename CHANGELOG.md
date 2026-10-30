@@ -5,6 +5,20 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 
 ## [Unreleased]
 
+### Añadido
+- Búsqueda dentro de la guía: al buscar en TV en directo aparece una sección
+  "En la guía" con las emisiones en curso o futuras que coinciden con el
+  título, su canal y cuándo empiezan ("Ahora", "Hoy · 21:30", "Mañana…").
+  Si el programa se emite en varios canales se agrupa en una sola fila.
+- Personalización de canales (pulsación larga en la lista de TV): renombrar
+  (la guía sigue casando por el nombre del proveedor), ocultar el canal en
+  toda la app —reversible desde Ajustes— y reordenar por drag & drop dentro
+  de favoritos o de su categoría (el menú pasa a un botón ⋮ en esas vistas).
+- Renombrar y reordenar categorías por drag & drop desde la gestión de
+  categorías en Ajustes, con opción de restaurar el nombre original. Los
+  renombres, ocultaciones y órdenes manuales sobreviven a las
+  resincronizaciones del proveedor.
+
 ### Mejorado
 - El reproductor ahora admite streams DASH (.mpd) y RTSP (rtsp://), además de
   HLS, MPEG-TS y MP4.

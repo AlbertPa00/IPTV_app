@@ -94,4 +94,17 @@
     <string name="download_state_failed">Download failed — tap to retry</string>
     <string name="download_state_progress">Downloading · %1$d%% · %2$s of %3$s</string>
     <string name="download_state_progress_unknown">Downloading · %1$s</string>
+    <string name="catalog_programmes_header">In the guide</string>
+    <string name="catalog_programme_now">Now</string>
+    <string name="catalog_programme_today">Today · %1$s</string>
+    <string name="catalog_programme_tomorrow">Tomorrow · %1$s</string>
+    <string name="catalog_programme_channels">on %1$d channels</string>
+    <string name="catalog_channel_hide">Hide channel</string>
+    <string name="catalog_channel_rename">Rename</string>
+    <string name="catalog_channel_restore_name">Restore original name</string>
+    <string name="catalog_channel_actions">Channel actions</string>
+    <string name="catalog_rename_title">Rename channel</string>
+    <string name="catalog_rename_field">Name</string>
+    <string name="catalog_save">Save</string>
+    <string name="catalog_cancel">Cancel</string>
 </resources>

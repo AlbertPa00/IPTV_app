@@ -6,14 +6,26 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.ChannelStagingEntity
 import kotlinx.coroutines.flow.Flow
 
-/** Excluye canales de categorías bloqueadas u ocultas por el usuario. */
+/**
+ * Excluye canales ocultados por el usuario y canales de categorías
+ * bloqueadas u ocultas.
+ */
 private const val UNLOCKED_ONLY =
-    "(categoryId IS NULL OR categoryId NOT IN " +
+    "hidden = 0 AND (categoryId IS NULL OR categoryId NOT IN " +
         "(SELECT id FROM categories WHERE isLocked = 1 OR hidden = 1))"
+
+/**
+ * Orden efectivo en ámbitos acotados (favoritos, dentro de categoría):
+ * el manual del usuario si existe y el del proveedor como respaldo.
+ * NO se usa en la vista "Todos": allí ordenar por expresión obliga a un
+ * filesort por página sobre todo el catálogo.
+ */
+private const val CUSTOM_OR_PROVIDER_ORDER = "COALESCE(customOrder, sortOrder), name"
 
 @Dao
 interface ChannelDao {
@@ -43,7 +55,7 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND language = :language AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     fun pagingByLanguage(sourceId: Long, kind: String, language: String): PagingSource<Int, ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND categoryId = :categoryId AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND categoryId = :categoryId AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY $CUSTOM_OR_PROVIDER_ORDER")
     fun pagingByCategory(sourceId: Long, categoryId: Long): PagingSource<Int, ChannelEntity>
 
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND nameNorm LIKE '%' || :query || '%' ESCAPE '\\' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
@@ -66,19 +78,19 @@ interface ChannelDao {
     )
     fun pagingByFts(sourceId: Long, kind: String, match: String): PagingSource<Int, ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isFavorite = 1 AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isFavorite = 1 AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY $CUSTOM_OR_PROVIDER_ORDER")
     fun pagingFavorites(sourceId: Long, kind: String): PagingSource<Int, ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND categoryId IS NULL AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND categoryId IS NULL AND externalId NOT LIKE 'episode:%' AND hidden = 0 ORDER BY sortOrder, name")
     fun pagingUncategorized(sourceId: Long, kind: String): PagingSource<Int, ChannelEntity>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isFavorite = 1 AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isFavorite = 1 AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY $CUSTOM_OR_PROVIDER_ORDER LIMIT :limit")
     fun observeTopFavorites(sourceId: Long, kind: String, limit: Int): Flow<List<ChannelEntity>>
 
-    @Query("SELECT * FROM channels WHERE categoryId = :categoryId AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name LIMIT :limit")
+    @Query("SELECT * FROM channels WHERE categoryId = :categoryId AND externalId NOT LIKE 'episode:%' AND hidden = 0 ORDER BY $CUSTOM_OR_PROVIDER_ORDER LIMIT :limit")
     fun observeTopByCategory(categoryId: Long, limit: Int): Flow<List<ChannelEntity>>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND categoryId IS NULL AND externalId NOT LIKE 'episode:%' ORDER BY sortOrder, name LIMIT :limit")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND categoryId IS NULL AND externalId NOT LIKE 'episode:%' AND hidden = 0 ORDER BY sortOrder, name LIMIT :limit")
     fun observeUncategorized(sourceId: Long, kind: String, limit: Int): Flow<List<ChannelEntity>>
 
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
@@ -87,7 +99,7 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND language = :language AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
     fun observeTopByLanguage(sourceId: Long, kind: String, language: String, limit: Int): Flow<List<ChannelEntity>>
 
-    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND categoryId = :categoryId AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND categoryId = :categoryId AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY $CUSTOM_OR_PROVIDER_ORDER LIMIT :limit")
     fun observeTopInCategory(sourceId: Long, kind: String, categoryId: Long, limit: Int): Flow<List<ChannelEntity>>
 
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND externalId NOT LIKE 'episode:%' AND nameNorm LIKE '%' || :query || '%' ESCAPE '\\' AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit")
@@ -157,6 +169,37 @@ interface ChannelDao {
     )
     fun pagingDownloadedChannels(section: String): PagingSource<Int, ChannelEntity>
 
+    /** Oculta o muestra un canal en toda la app (catálogo, búsqueda y guía). */
+    @Query("UPDATE channels SET hidden = :hidden WHERE id = :id")
+    suspend fun setHidden(id: Long, hidden: Boolean)
+
+    /**
+     * Renombrar sólo toca la copia del usuario (`name`/`nameNorm`); el
+     * proveedor sigue en `providerName`/`providerNameNorm`, que es con lo que
+     * la EPG sigue emparejando el canal.
+     */
+    @Query("UPDATE channels SET name = :name, nameNorm = :nameNorm WHERE id = :id")
+    suspend fun rename(id: Long, name: String, nameNorm: String)
+
+    /** Devuelve el canal al nombre del proveedor. */
+    @Query("UPDATE channels SET name = providerName, nameNorm = providerNameNorm WHERE id = :id")
+    suspend fun restoreName(id: Long)
+
+    /** Canales ocultados, para poder recuperarlos desde Ajustes. */
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND hidden = 1 ORDER BY kind, name")
+    fun observeHidden(sourceId: Long): Flow<List<ChannelEntity>>
+
+    /** Ámbito completo de favoritos para reordenar (mismo filtro que pagingFavorites). */
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isFavorite = 1 AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY $CUSTOM_OR_PROVIDER_ORDER")
+    fun observeFavoritesForReorder(sourceId: Long, kind: String): Flow<List<ChannelEntity>>
+
+    /** Ámbito completo de una categoría para reordenar (mismo filtro que pagingByCategory). */
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND categoryId = :categoryId AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY $CUSTOM_OR_PROVIDER_ORDER")
+    fun observeCategoryForReorder(sourceId: Long, categoryId: Long): Flow<List<ChannelEntity>>
+
+    @Update
+    suspend fun updateAll(channels: List<ChannelEntity>)
+
     // -- Staging de importación ----------------------------------------------
     // El catálogo nuevo se vuelca en `channels_staging` durante el parseo y se
     // funde en `channels` en una transacción: REPLACE conserva id e isFavorite
@@ -180,15 +223,20 @@ interface ChannelDao {
         INSERT OR REPLACE INTO channels
             (id, sourceId, categoryId, externalId, name, nameNorm, streamUrl, logoUrl,
              tvgId, groupTitle, kind, containerExt, sortOrder, isFavorite, language,
-             userAgent, referrer)
-        SELECT x.id, s.sourceId, cat.id, s.externalId, s.name, s.nameNorm, s.streamUrl,
+             userAgent, referrer, providerName, providerNameNorm, customOrder, hidden)
+        SELECT x.id, s.sourceId, cat.id, s.externalId,
+               CASE WHEN x.name = x.providerName THEN s.name ELSE x.name END,
+               CASE WHEN x.name = x.providerName THEN s.nameNorm ELSE x.nameNorm END,
+               s.streamUrl,
                s.logoUrl, s.tvgId, s.groupTitle, s.kind, s.containerExt, s.sortOrder,
-               x.isFavorite, s.language, s.userAgent, s.referrer
+               x.isFavorite, s.language, s.userAgent, s.referrer,
+               s.name, s.nameNorm, x.customOrder, x.hidden
         FROM channels_staging s
         JOIN channels x ON x.sourceId = s.sourceId AND x.externalId = s.externalId
         LEFT JOIN categories cat ON cat.sourceId = s.sourceId AND cat.externalId = s.groupTitle
         WHERE s.sourceId = :sourceId AND (
-            x.categoryId IS NOT cat.id OR x.name IS NOT s.name OR x.nameNorm IS NOT s.nameNorm
+            x.categoryId IS NOT cat.id OR x.providerName IS NOT s.name
+            OR x.providerNameNorm IS NOT s.nameNorm
             OR x.streamUrl IS NOT s.streamUrl OR x.logoUrl IS NOT s.logoUrl OR x.tvgId IS NOT s.tvgId
             OR x.groupTitle IS NOT s.groupTitle OR x.kind IS NOT s.kind
             OR x.containerExt IS NOT s.containerExt OR x.sortOrder IS NOT s.sortOrder
@@ -203,10 +251,10 @@ interface ChannelDao {
         INSERT INTO channels
             (sourceId, categoryId, externalId, name, nameNorm, streamUrl, logoUrl,
              tvgId, groupTitle, kind, containerExt, sortOrder, isFavorite, language,
-             userAgent, referrer)
+             userAgent, referrer, providerName, providerNameNorm)
         SELECT s.sourceId, cat.id, s.externalId, s.name, s.nameNorm, s.streamUrl,
                s.logoUrl, s.tvgId, s.groupTitle, s.kind, s.containerExt, s.sortOrder,
-               0, s.language, s.userAgent, s.referrer
+               0, s.language, s.userAgent, s.referrer, s.name, s.nameNorm
         FROM channels_staging s
         LEFT JOIN categories cat ON cat.sourceId = s.sourceId AND cat.externalId = s.groupTitle
         WHERE s.sourceId = :sourceId AND NOT EXISTS (

@@ -87,9 +87,9 @@ interface ProgrammeDao {
     @Query(
         """
         SELECT c.id AS id, c.name AS name, c.logoUrl AS logoUrl,
-               c.tvgId AS tvgId, c.nameNorm AS nameNorm
+               c.tvgId AS tvgId, c.providerNameNorm AS nameNorm
         FROM channels c
-        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE'
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.hidden = 0
           AND (c.categoryId IS NULL OR c.categoryId NOT IN
               (SELECT id FROM categories WHERE isLocked = 1 OR hidden = 1))
           AND (:favoritesOnly = 0 OR c.isFavorite = 1)
@@ -121,6 +121,53 @@ interface ProgrammeDao {
         """
     )
     suspend fun nextProgrammes(sourceId: Long, atUtc: Long): List<GuideNextRow>
+
+    /**
+     * Búsqueda de emisiones por título ("cuándo lo echan"), paso 1: el MATCH
+     * va en una subconsulta IN que materializa el conjunto una vez — igual
+     * que `pagingByFts` de canales. Devuelve sólo emisiones en curso o
+     * futuras; el canal se resuelve aparte con [liveChannelsForKeys],
+     * porque un JOIN con `tvgId OR providerNameNorm` no usaría índice.
+     */
+    @Query(
+        """
+        SELECT * FROM programmes
+        WHERE id IN (SELECT rowid FROM programmes_fts WHERE programmes_fts MATCH :match)
+          AND sourceId = :sourceId AND endUtc > :nowUtc
+        ORDER BY startUtc
+        LIMIT :limit
+        """
+    )
+    suspend fun searchProgrammeRows(
+        sourceId: Long,
+        match: String,
+        nowUtc: Long,
+        limit: Int,
+    ): List<ProgrammeEntity>
+
+    /**
+     * Paso 2 de la búsqueda EPG: resuelve en una sola pasada los canales de
+     * las claves de los programas (tvgId o nombre del proveedor — así un
+     * canal renombrado sigue encontrando su EPG). Mismo predicado de
+     * visibilidad que el catálogo: nada oculto ni bloqueado aparece como
+     * resultado.
+     */
+    @Query(
+        """
+        SELECT * FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE'
+          AND c.externalId NOT LIKE 'episode:%'
+          AND c.hidden = 0
+          AND (c.categoryId IS NULL OR c.categoryId NOT IN
+              (SELECT id FROM categories WHERE isLocked = 1 OR hidden = 1))
+          AND (c.tvgId IN (:keys) OR c.providerNameNorm IN (:names))
+        """
+    )
+    suspend fun liveChannelsForKeys(
+        sourceId: Long,
+        keys: List<String>,
+        names: List<String>,
+    ): List<com.iptv.core.storage.entity.ChannelEntity>
 
     /**
      * Guía completa sin subconsultas por canal: tres consultas indexadas y el
