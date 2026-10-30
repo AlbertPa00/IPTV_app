@@ -192,14 +192,15 @@ class LiveTvViewModel @Inject constructor(
      */
     val programmeResults: StateFlow<List<ProgrammeHit>> = combine(
         activeSource,
+        _filters,
         debouncedQuery,
-    ) { s, q -> s to q }
-        .flatMapLatest { (source, query) ->
+    ) { s, f, q -> Triple(s, f, q) }
+        .flatMapLatest { (source, filters, query) ->
             val match = query.toFtsMatch()
             if (source == null || match.isBlank()) {
                 flowOf(emptyList())
             } else {
-                flowOf(searchProgrammes(source.id, match))
+                flowOf(searchProgrammes(source.id, match, filters))
             }
         }
         .flowOn(Dispatchers.Default)
@@ -210,7 +211,11 @@ class LiveTvViewModel @Inject constructor(
      * (un JOIN con OR no usaría índice). El dedup y el emparejamiento con
      * el canal se hacen en memoria — mismo patrón que `guideSnapshot`.
      */
-    private suspend fun searchProgrammes(sourceId: Long, match: String): List<ProgrammeHit> {
+    private suspend fun searchProgrammes(
+        sourceId: Long,
+        match: String,
+        filters: Filters,
+    ): List<ProgrammeHit> {
         val programmes = programmeDao.searchProgrammeRows(
             sourceId,
             match,
@@ -220,10 +225,20 @@ class LiveTvViewModel @Inject constructor(
         if (programmes.isEmpty()) return emptyList()
         val keys = programmes.mapTo(HashSet()) { it.channelKey }.apply { remove("") }.toList()
         val names = programmes.mapTo(HashSet()) { it.channelNameNorm }.apply { remove("") }.toList()
-        val channels =
+        var channels =
             if (keys.isEmpty() && names.isEmpty()) emptyList()
             else programmeDao.liveChannelsForKeys(sourceId, keys, names)
-        return toProgrammeHits(programmes, channels).take(PROGRAMME_SEARCH_LIMIT)
+        val scoped = filters.categoryId != null || filters.favoritesOnly || filters.language != null
+        if (scoped) {
+            channels = channels.filter { ch ->
+                (filters.categoryId == null || ch.categoryId == filters.categoryId) &&
+                    (!filters.favoritesOnly || ch.isFavorite) &&
+                    (filters.language == null || ch.language == filters.language)
+            }
+        }
+        return toProgrammeHits(programmes, channels)
+            .let { hits -> if (scoped) hits.filter { it.channelCount > 0 } else hits }
+            .take(PROGRAMME_SEARCH_LIMIT)
     }
 
     /**
@@ -246,16 +261,22 @@ class LiveTvViewModel @Inject constructor(
                     filters.query.isNotBlank() -> {
                         val match = filters.query.toFtsMatch()
                         if (match.isBlank()) {
-                            channelDao.pagingBySearch(
+                            channelDao.pagingBySearchScoped(
                                 key.sourceId,
                                 ContentKind.TV.storageValue,
                                 filters.query.toLikePattern(),
+                                filters.categoryId,
+                                filters.favoritesOnly,
+                                filters.language,
                             )
                         } else {
-                            channelDao.pagingByFts(
+                            channelDao.pagingByFtsScoped(
                                 key.sourceId,
                                 ContentKind.TV.storageValue,
                                 match,
+                                filters.categoryId,
+                                filters.favoritesOnly,
+                                filters.language,
                             )
                         }
                     }
@@ -312,7 +333,7 @@ class LiveTvViewModel @Inject constructor(
     }
 
     fun onQueryChange(query: String) {
-        _filters.update { Filters(query = query.trimStart()) }
+        _filters.update { it.copy(query = query.trimStart()) }
     }
 
     // Estado optimista de favoritos, granular por canal: sólo se recompone

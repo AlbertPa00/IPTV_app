@@ -78,6 +78,52 @@ interface ChannelDao {
     )
     fun pagingByFts(sourceId: Long, kind: String, match: String): PagingSource<Int, ChannelEntity>
 
+    /**
+     * Búsqueda con ámbito: cuando el usuario ya navegó a una categoría,
+     * favoritos o idioma, el texto filtra sólo ese bucket en vez de todo el
+     * origen (null/false = sin ámbito, como las consultas globales).
+     */
+    @Query(
+        "SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind " +
+            "AND externalId NOT LIKE 'episode:%' " +
+            "AND nameNorm LIKE '%' || :query || '%' ESCAPE '\\' " +
+            "AND (:categoryId IS NULL OR categoryId = :categoryId) " +
+            "AND (:favoritesOnly = 0 OR isFavorite = 1) " +
+            "AND (:language IS NULL OR language = :language) " +
+            "AND $UNLOCKED_ONLY ORDER BY sortOrder, name",
+    )
+    fun pagingBySearchScoped(
+        sourceId: Long,
+        kind: String,
+        query: String,
+        categoryId: Long?,
+        favoritesOnly: Boolean,
+        language: String?,
+    ): PagingSource<Int, ChannelEntity>
+
+    /** Variante FTS4 de [pagingBySearchScoped]; ver [pagingByFts] para el MATCH. */
+    @Query(
+        "SELECT c.* FROM channels c WHERE c.id IN " +
+            "(SELECT rowid FROM channels_fts WHERE channels_fts MATCH :match) " +
+            "AND c.sourceId = :sourceId AND c.kind = :kind " +
+            "AND c.externalId NOT LIKE 'episode:%' " +
+            "AND (:categoryId IS NULL OR c.categoryId = :categoryId) " +
+            "AND (:favoritesOnly = 0 OR c.isFavorite = 1) " +
+            "AND (:language IS NULL OR c.language = :language) " +
+            "AND c.hidden = 0 AND " +
+            "(c.categoryId IS NULL OR c.categoryId NOT IN " +
+            "(SELECT id FROM categories WHERE isLocked = 1 OR hidden = 1)) " +
+            "ORDER BY c.sortOrder, c.name",
+    )
+    fun pagingByFtsScoped(
+        sourceId: Long,
+        kind: String,
+        match: String,
+        categoryId: Long?,
+        favoritesOnly: Boolean,
+        language: String?,
+    ): PagingSource<Int, ChannelEntity>
+
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isFavorite = 1 AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY ORDER BY $CUSTOM_OR_PROVIDER_ORDER")
     fun pagingFavorites(sourceId: Long, kind: String): PagingSource<Int, ChannelEntity>
 

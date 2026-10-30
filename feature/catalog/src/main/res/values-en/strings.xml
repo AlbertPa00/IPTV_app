@@ -16,6 +16,8 @@
     <string name="catalog_play">Play</string>
     <string name="catalog_next_programme">Next · %1$s  %2$s</string>
     <string name="catalog_search_tv">Search channels…</string>
+    <string name="catalog_search_in">Search in %1$s…</string>
+    <string name="catalog_search_categories">Search categories…</string>
     <string name="catalog_search_movies">Search movies…</string>
     <string name="catalog_search_series">Search series…</string>
     <string name="catalog_empty_tv">No TV channels in this source</string>

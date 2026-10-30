@@ -16,6 +16,8 @@
     <string name="catalog_play">Reproducir</string>
     <string name="catalog_next_programme">A continuación · %1$s  %2$s</string>
     <string name="catalog_search_tv">Buscar canal…</string>
+    <string name="catalog_search_in">Buscar en %1$s…</string>
+    <string name="catalog_search_categories">Buscar categoría…</string>
     <string name="catalog_search_movies">Buscar película…</string>
     <string name="catalog_search_series">Buscar serie…</string>
     <string name="catalog_empty_tv">No hay canales de TV en esta fuente</string>

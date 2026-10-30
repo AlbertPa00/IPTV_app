@@ -19,6 +19,14 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   renombres, ocultaciones y órdenes manuales sobreviven a las
   resincronizaciones del proveedor.
 
+### Añadido
+- Búsqueda dentro del ámbito activo en TV en directo: con una categoría,
+  favoritos o idioma seleccionados, el buscador filtra sólo ese conjunto de
+  canales (el hint del campo indica el ámbito, p. ej. "Buscar en Deportes").
+- Chip "Todas las categorías ▾" al final del rail de TV (cuando hay más de
+  10): abre un listado con buscador para encontrar la categoría sin recorrer
+  el rail a ciegas.
+
 ### Mejorado
 - El reproductor ahora admite streams DASH (.mpd) y RTSP (rtsp://), además de
   HLS, MPEG-TS y MP4.

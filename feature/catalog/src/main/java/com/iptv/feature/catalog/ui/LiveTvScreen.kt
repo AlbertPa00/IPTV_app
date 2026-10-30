@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -105,6 +106,7 @@ fun LiveTvScreen(
     val content = viewModel.channels.collectAsLazyPagingItems()
     val reorderScope by viewModel.reorderScope.collectAsStateWithLifecycle()
     var showLanguagePicker by remember { mutableStateOf(false) }
+    var showCategoryPicker by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<ChannelEntity?>(null) }
     // El pull-to-refresh también revalida el PagingSource: el indicador se
     // sostiene mientras dure ese refresh además del suelo del ViewModel.
@@ -128,12 +130,22 @@ fun LiveTvScreen(
         }
     }
 
+    // El hint del buscador anuncia el ámbito activo: con una categoría o
+    // favoritos seleccionados el texto filtra sólo ese bucket.
+    val scopeName = when {
+        filters.favoritesOnly -> stringResource(R.string.catalog_favorites)
+        filters.categoryId != null -> categories.firstOrNull {
+            it.id == filters.categoryId
+        }?.name
+        else -> null
+    }
     Column(Modifier.fillMaxSize().background(CinemaBlack)) {
         CatalogHeader(
             title = stringResource(R.string.catalog_title_tv),
             subtitle = stringResource(R.string.catalog_live_subtitle),
             query = filters.query,
-            searchHint = R.string.catalog_search_tv,
+            searchHint = scopeName?.let { stringResource(R.string.catalog_search_in, it) }
+                ?: stringResource(R.string.catalog_search_tv),
             onQueryChange = viewModel::onQueryChange,
         )
         if (filters.query.isBlank()) {
@@ -149,6 +161,7 @@ fun LiveTvScreen(
                 onSelectAll = viewModel::selectAll,
                 onSelectCategory = viewModel::selectCategory,
                 onLanguageClick = { showLanguagePicker = true },
+                onAllCategoriesClick = { showCategoryPicker = true },
             )
         }
         if (showLanguagePicker) {
@@ -157,6 +170,16 @@ fun LiveTvScreen(
                 selected = filters.language,
                 onSelect = viewModel::selectLanguage,
                 onDismiss = { showLanguagePicker = false },
+            )
+        }
+        if (showCategoryPicker) {
+            CategoryPickerDialog(
+                categories = categories.filter {
+                    filters.language == null || it.language == filters.language
+                },
+                selected = filters.categoryId,
+                onSelect = viewModel::selectCategory,
+                onDismiss = { showCategoryPicker = false },
             )
         }
         PullToRefreshBox(
@@ -234,6 +257,7 @@ private fun LiveFilterRail(
     onSelectAll: () -> Unit,
     onSelectCategory: (Long) -> Unit,
     onLanguageClick: () -> Unit,
+    onAllCategoriesClick: () -> Unit,
 ) {
     // En horizontal el rail compite con la lista por altura: padding justo.
     val railVPad =
@@ -280,8 +304,28 @@ private fun LiveFilterRail(
                 onClick = { onSelectCategory(category.id) },
             )
         }
+        // Las listas Xtream traen cientos de grupos: el diálogo con búsqueda
+        // evita recorrer el rail a ciegas.
+        if (categories.size > CATEGORY_SEARCH_THRESHOLD) {
+            item(key = "allCategories") {
+                CategoryChip(
+                    label = stringResource(R.string.catalog_all_categories),
+                    selected = false,
+                    onClick = onAllCategoriesClick,
+                    leadingIcon = {
+                        Icon(
+                            Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
+                )
+            }
+        }
     }
 }
+
+private const val CATEGORY_SEARCH_THRESHOLD = 10
 
 @Composable
 private fun ChannelList(
