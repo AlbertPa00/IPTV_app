@@ -297,15 +297,8 @@ private fun LiveFilterRail(
                 onClick = onSelectAll,
             )
         }
-        items(categories, key = { it.id }) { category ->
-            CategoryChip(
-                label = category.name,
-                selected = selectedCategoryId == category.id,
-                onClick = { onSelectCategory(category.id) },
-            )
-        }
-        // Las listas Xtream traen cientos de grupos: el diálogo con búsqueda
-        // evita recorrer el rail a ciegas.
+        // Las listas Xtream traen cientos de grupos: acceso fijo al diálogo
+        // con búsqueda — al final del rail nadie lo encontraría sin scroll.
         if (categories.size > CATEGORY_SEARCH_THRESHOLD) {
             item(key = "allCategories") {
                 CategoryChip(
@@ -321,6 +314,13 @@ private fun LiveFilterRail(
                     },
                 )
             }
+        }
+        items(categories, key = { it.id }) { category ->
+            CategoryChip(
+                label = category.name,
+                selected = selectedCategoryId == category.id,
+                onClick = { onSelectCategory(category.id) },
+            )
         }
     }
 }
