@@ -5,6 +5,8 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-30
+
 ### Añadido
 - Búsqueda dentro de la guía: al buscar en TV en directo aparece una sección
   "En la guía" con las emisiones en curso o futuras que coinciden con el
@@ -18,12 +20,10 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   categorías en Ajustes, con opción de restaurar el nombre original. Los
   renombres, ocultaciones y órdenes manuales sobreviven a las
   resincronizaciones del proveedor.
-
-### Añadido
 - Búsqueda dentro del ámbito activo en TV en directo: con una categoría,
   favoritos o idioma seleccionados, el buscador filtra sólo ese conjunto de
   canales (el hint del campo indica el ámbito, p. ej. "Buscar en Deportes").
-- Chip "Todas las categorías ▾" al final del rail de TV (cuando hay más de
+- Chip "Todas las categorías ▾" al inicio del rail de TV (cuando hay más de
   10): abre un listado con buscador para encontrar la categoría sin recorrer
   el rail a ciegas.
 
