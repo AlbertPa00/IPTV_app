@@ -55,6 +55,9 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   (RemoteServiceException en el servicio de notificaciones del SDK): se
   desactiva la notificación duplicada de Cast del SDK al existir ya la
   propia con controles de reproducción.
+- La notificación de control de Chromecast sobrevive al salir de la app:
+  antes desaparecía al quitar la tarea y la TV seguía emitiendo sin forma
+  de pararlo desde el móvil.
 
 ### Otras
 
