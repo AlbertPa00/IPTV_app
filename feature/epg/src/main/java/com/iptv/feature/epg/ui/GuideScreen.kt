@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iptv.core.designsystem.components.IptvAsyncImage
+import com.iptv.core.designsystem.tv.tvFocusAffordance
 import com.iptv.core.storage.dao.GuideRow
 import com.iptv.core.storage.dao.GuideSort
 import com.iptv.feature.epg.R
@@ -247,7 +248,9 @@ private fun GuideChannel(row: GuideRow, onClick: (Long) -> Unit, now: Long) {
     Card(
         colors = CardDefaults.cardColors(containerColor = GuideCard),
         shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth().clickable { onClick(row.channelId) },
+        modifier = Modifier.fillMaxWidth()
+            .tvFocusAffordance(shape = RoundedCornerShape(14.dp), focusedScale = 1.02f)
+            .clickable { onClick(row.channelId) },
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             if (row.channelLogoUrl != null) {
