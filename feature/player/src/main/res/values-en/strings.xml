@@ -57,4 +57,6 @@
     <string name="player_download_failed">Download failed (tap to retry)</string>
     <string name="player_download_delete_title">Delete download?</string>
     <string name="player_download_delete_confirm">The downloaded file will be removed from this device.</string>
+    <string name="player_guide_title">Guide</string>
+    <string name="player_guide_empty">No guide data for this source</string>
 </resources>

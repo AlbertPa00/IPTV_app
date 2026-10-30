@@ -30,6 +30,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -68,6 +69,7 @@ import kotlinx.coroutines.delay
 private const val CONTROLS_HIDE_DELAY_MS = 8_000L
 private const val INFO_HIDE_DELAY_MS = 4_500L
 private const val OSD_CONFIRM_DELAY_MS = 2_500L
+private const val GUIDE_REFRESH_MS = 60_000L
 
 /**
  * Shell de TV player-first: el vídeo es permanente y toda la navegación
@@ -85,6 +87,8 @@ fun TvPlayerScreen(
     val player by viewModel.player.collectAsStateWithLifecycle()
     val channelList by viewModel.channelList.collectAsStateWithLifecycle()
     val hasChannelList by viewModel.hasChannelList.collectAsStateWithLifecycle()
+    val nowNext by viewModel.nowNext.collectAsStateWithLifecycle()
+    val guideRows by viewModel.guideRows.collectAsStateWithLifecycle()
     val playPause = player?.let { rememberPlayPauseButtonState(it) }
 
     // Buffering no tiene holder oficial en media3-ui-compose: se observa
@@ -133,6 +137,10 @@ fun TvPlayerScreen(
                 overlay = TvOverlay.RAIL
             }
             TvAction.OpenInfo -> overlay = TvOverlay.INFO
+            TvAction.OpenGuide -> {
+                viewModel.refreshGuide()
+                overlay = TvOverlay.GUIDE
+            }
             TvAction.TogglePlayPause -> playPause?.onClick()
             is TvAction.SeekBy -> player?.let {
                 // TIME_UNSET en duration haría coerceIn lanzar (min > max).
@@ -179,6 +187,15 @@ fun TvPlayerScreen(
                 if (overlay == TvOverlay.NUMBER_OSD) confirmDigits()
             }
             else -> Unit
+        }
+    }
+
+    // Mientras la guía está visible sus datos se refrescan cada minuto:
+    // la lista es una foto puntual de "ahora y a continuación".
+    LaunchedEffect(overlay) {
+        while (overlay == TvOverlay.GUIDE) {
+            delay(GUIDE_REFRESH_MS)
+            if (overlay == TvOverlay.GUIDE) viewModel.refreshGuide()
         }
     }
 
@@ -303,6 +320,7 @@ fun TvPlayerScreen(
                 name = state.channel?.name.orEmpty(),
                 logoUrl = state.channel?.logoUrl,
                 isLive = state.isLive,
+                nowNext = nowNext,
             )
         }
 
@@ -331,6 +349,23 @@ fun TvPlayerScreen(
         ) {
             TvChannelRail(
                 channels = channelList,
+                currentChannelId = state.channel?.id,
+                onPick = { id ->
+                    viewModel.playChannel(id)
+                    overlay = TvOverlay.INFO
+                },
+            )
+        }
+
+        // Panel EPG (derecha): entra/sale deslizando sobre el vídeo.
+        AnimatedVisibility(
+            visible = overlay == TvOverlay.GUIDE,
+            enter = slideInHorizontally { it },
+            exit = slideOutHorizontally { it },
+            modifier = Modifier.align(Alignment.CenterEnd),
+        ) {
+            TvGuideOverlay(
+                rows = guideRows,
                 currentChannelId = state.channel?.id,
                 onPick = { id ->
                     viewModel.playChannel(id)
@@ -437,6 +472,7 @@ private fun TvInfoCard(
     name: String,
     logoUrl: String?,
     isLive: Boolean,
+    nowNext: PlayerViewModel.NowNext?,
 ) {
     Surface(
         color = Color.Black.copy(alpha = 0.78f),
@@ -463,7 +499,7 @@ private fun TvInfoCard(
                 )
                 Spacer(Modifier.width(14.dp))
             }
-            Column {
+            Column(Modifier.widthIn(max = 420.dp)) {
                 Text(
                     text = name,
                     color = Color.White,
@@ -480,6 +516,44 @@ private fun TvInfoCard(
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                 )
+                val current = nowNext?.current
+                if (current != null) {
+                    Text(
+                        text = "${formatTvTime(current.startUtc)} – " +
+                            "${formatTvTime(current.endUtc)} · ${current.title}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    if (current.endUtc > current.startUtc) {
+                        val progress = (
+                            (System.currentTimeMillis() - current.startUtc).toFloat() /
+                                (current.endUtc - current.startUtc).toFloat()
+                            ).coerceIn(0f, 1f)
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = Color.White.copy(alpha = 0.22f),
+                            modifier = Modifier
+                                .padding(top = 6.dp)
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                        )
+                    }
+                }
+                nowNext?.next?.let { next ->
+                    Text(
+                        text = "› ${formatTvTime(next.startUtc)} · ${next.title}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
         }
     }

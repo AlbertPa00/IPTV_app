@@ -140,6 +140,29 @@ class TvKeyRouterTest {
         )
     }
 
+    // -- Guía EPG --------------------------------------------------------------
+
+    @Test
+    fun `guide key opens the guide and toggles it closed`() {
+        assertEquals(TvAction.OpenGuide, perform(routeTvKey(down(TvKeys.GUIDE), ctx())))
+        assertEquals(
+            TvAction.CloseOverlay,
+            perform(routeTvKey(down(TvKeys.GUIDE), ctx(overlay = TvOverlay.GUIDE))),
+        )
+    }
+
+    @Test
+    fun `arrows and center belong to focus inside the guide`() {
+        val guide = ctx(overlay = TvOverlay.GUIDE)
+        listOf(
+            TvKeys.DPAD_UP, TvKeys.DPAD_DOWN, TvKeys.DPAD_LEFT,
+            TvKeys.DPAD_RIGHT, TvKeys.DPAD_CENTER,
+        ).forEach { code ->
+            assertEquals("keyCode=$code", TvKeyResult.Ignore, routeTvKey(down(code), guide))
+        }
+        assertEquals(TvAction.CloseOverlay, perform(routeTvKey(down(TvKeys.BACK), guide)))
+    }
+
     // -- OSD numérico ---------------------------------------------------------
 
     @Test

@@ -26,7 +26,9 @@ import com.iptv.core.common.pip.PipController
 import com.iptv.core.network.DEFAULT_USER_AGENT
 import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.DownloadDao
+import com.iptv.core.storage.dao.GuideRow
 import com.iptv.core.storage.dao.PlaybackHistoryDao
+import com.iptv.core.storage.dao.ProgrammeDao
 import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.storage.dao.SourceDao
 import com.iptv.core.storage.entity.ChannelEntity
@@ -35,6 +37,7 @@ import com.iptv.core.storage.entity.DownloadSections
 import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.core.storage.entity.Kinds
 import com.iptv.core.storage.entity.PlaybackHistoryEntity
+import com.iptv.core.storage.entity.ProgrammeEntity
 import com.iptv.core.storage.entity.SourceEntity
 import com.iptv.core.common.cast.CastController
 import com.iptv.core.common.cast.CastEvent
@@ -53,7 +56,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -73,6 +81,7 @@ class PlayerViewModel @Inject constructor(
     private val sourceDao: SourceDao,
     private val playbackHistoryDao: PlaybackHistoryDao,
     private val downloadDao: DownloadDao,
+    private val programmeDao: ProgrammeDao,
     private val downloadController: DownloadController,
     private val pipController: PipController,
     private val prefs: AppPreferences,
@@ -147,6 +156,60 @@ class PlayerViewModel @Inject constructor(
         val sourceId = _uiState.value.channel?.sourceId ?: return
         viewModelScope.launch {
             _channelList.value = channelDao.liveBySource(sourceId)
+        }
+    }
+
+    // -- EPG (shell de TV) ------------------------------------------------------
+
+    /** Programa en curso y siguiente del canal en reproducción. */
+    data class NowNext(
+        val current: ProgrammeEntity? = null,
+        val next: ProgrammeEntity? = null,
+    )
+
+    /**
+     * Now/next del canal activo. El ticker reevalúa la ventana cada 30 s:
+     * Room sólo emite al cambiar la tabla, así que sin él un programa que
+     * termina quedaría "en curso" hasta la próxima sincronización de la EPG.
+     */
+    val nowNext: StateFlow<NowNext> =
+        combine(
+            _uiState.map { it.channel }.distinctUntilChanged(),
+            flow {
+                while (true) {
+                    emit(System.currentTimeMillis())
+                    delay(EPG_REFRESH_MS)
+                }
+            },
+        ) { channel, atUtc -> channel to atUtc }
+            .flatMapLatest { (channel, atUtc) ->
+                if (channel == null) {
+                    flowOf(NowNext())
+                } else {
+                    val key = channel.tvgId.orEmpty()
+                    combine(
+                        programmeDao.observeCurrentForChannel(
+                            channel.sourceId, key, channel.providerNameNorm, atUtc,
+                        ),
+                        programmeDao.observeNextForChannel(
+                            channel.sourceId, key, channel.providerNameNorm, atUtc,
+                        ),
+                    ) { current, next -> NowNext(current, next) }
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NowNext())
+
+    private val _guideRows = MutableStateFlow<List<GuideRow>>(emptyList())
+    val guideRows: StateFlow<List<GuideRow>> = _guideRows.asStateFlow()
+
+    /** Recarga la guía "ahora y a continuación" del overlay de TV. */
+    fun refreshGuide() {
+        val sourceId = _uiState.value.channel?.sourceId ?: return
+        viewModelScope.launch {
+            _guideRows.value = programmeDao.guideSnapshot(
+                sourceId,
+                System.currentTimeMillis(),
+            )
         }
     }
 
@@ -904,6 +967,7 @@ class PlayerViewModel @Inject constructor(
         const val TAG = "IptvPlayer"
         const val HISTORY_SAVE_INTERVAL_MS = 10_000L
         const val BUFFERING_TIMEOUT_MS = 20_000L
+        const val EPG_REFRESH_MS = 30_000L
         const val COMPLETE_THRESHOLD = 0.95
     }
 }

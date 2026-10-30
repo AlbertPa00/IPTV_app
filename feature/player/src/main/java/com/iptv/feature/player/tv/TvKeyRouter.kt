@@ -48,6 +48,8 @@ enum class TvOverlay {
     RAIL,
     /** Tarjeta informativa del canal (post-zap o tecla INFO). */
     INFO,
+    /** Panel EPG "ahora y a continuación" (tecla GUIDE). */
+    GUIDE,
     /** Entrada directa de número de canal. */
     NUMBER_OSD,
 }
@@ -64,6 +66,7 @@ sealed interface TvAction {
     data object CloseOverlay : TvAction
     data object OpenRail : TvAction
     data object OpenInfo : TvAction
+    data object OpenGuide : TvAction
     data object TogglePlayPause : TvAction
     data class SeekBy(val deltaMs: Long) : TvAction
     data class ZapBy(val delta: Int) : TvAction
@@ -129,7 +132,10 @@ private fun routeTvKeyDown(key: TvKey, ctx: TvInputContext): TvKeyResult {
         TvKeys.CHANNEL_DOWN -> zapOrIgnore(ctx, -1)
 
         TvKeys.INFO -> TvKeyResult.Perform(TvAction.OpenInfo)
-        TvKeys.GUIDE -> TvKeyResult.Perform(TvAction.OpenInfo)
+        // La tecla GUIDE funciona como conmutador del panel EPG.
+        TvKeys.GUIDE -> TvKeyResult.Perform(
+            if (ctx.overlay == TvOverlay.GUIDE) TvAction.CloseOverlay else TvAction.OpenGuide,
+        )
         TvKeys.MENU -> TvKeyResult.Perform(TvAction.OpenControls)
 
         TvKeys.BACK -> TvKeyResult.Perform(

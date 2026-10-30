@@ -84,6 +84,44 @@ interface ProgrammeDao {
     @Query("SELECT * FROM programmes WHERE sourceId = :sourceId AND channelKey = :channelKey AND startUtc > :atUtc ORDER BY startUtc LIMIT 1")
     fun observeNext(sourceId: Long, channelKey: String, atUtc: Long): Flow<ProgrammeEntity?>
 
+    /**
+     * Programa en curso / siguiente de un canal concreto (tarjeta de zap en
+     * TV). Casa por channelKey (tvgId) o por el nombre del proveedor — el
+     * mismo criterio que [guideSnapshot] — preferiendo la coincidencia por
+     * clave cuando hay empate.
+     */
+    @Query(
+        """
+        SELECT * FROM programmes
+        WHERE sourceId = :sourceId
+          AND (channelKey = :channelKey OR channelNameNorm = :channelNameNorm)
+          AND startUtc <= :atUtc AND endUtc > :atUtc
+        ORDER BY (channelKey = :channelKey) DESC, startUtc DESC LIMIT 1
+        """
+    )
+    fun observeCurrentForChannel(
+        sourceId: Long,
+        channelKey: String,
+        channelNameNorm: String,
+        atUtc: Long,
+    ): Flow<ProgrammeEntity?>
+
+    @Query(
+        """
+        SELECT * FROM programmes
+        WHERE sourceId = :sourceId
+          AND (channelKey = :channelKey OR channelNameNorm = :channelNameNorm)
+          AND startUtc > :atUtc
+        ORDER BY (channelKey = :channelKey) DESC, startUtc LIMIT 1
+        """
+    )
+    fun observeNextForChannel(
+        sourceId: Long,
+        channelKey: String,
+        channelNameNorm: String,
+        atUtc: Long,
+    ): Flow<ProgrammeEntity?>
+
     @Query(
         """
         SELECT c.id AS id, c.name AS name, c.logoUrl AS logoUrl,

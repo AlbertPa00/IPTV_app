@@ -13,6 +13,10 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   lista de canales con la flecha izquierda, tarjeta del canal con la
   derecha o la tecla INFO, controles de reproducción con OK o MENU y
   entrada directa de número de canal con las teclas numéricas.
+- Guía de programación en TV: la tecla GUIDE abre un panel "ahora y a
+  continuación" sobre el vídeo con todos los canales, su programa en
+  curso y el siguiente; la tarjeta post-zap también muestra qué se emite
+  ahora y qué viene después.
 
 ### Corregido
 - Canales que no llegaban a emitir al Chromecast en cuentas con límite de
