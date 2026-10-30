@@ -1,6 +1,7 @@
 package com.iptv.feature.player
 
 import androidx.media3.common.PlaybackException
+import com.iptv.core.common.playback.PlaybackErrorKind
 import com.iptv.feature.player.ui.PlaybackResilience
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -52,6 +53,30 @@ class PlaybackResilienceTest {
             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED, null))
         assertFalse(PlaybackResilience.isRetriableError(
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, null))
+    }
+
+    // -- mapErrorKind ----------------------------------------------------------
+
+    @Test
+    fun `mapErrorKind buckets each family for the UI`() {
+        assertEquals(PlaybackErrorKind.NETWORK, PlaybackResilience.mapErrorKind(
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED))
+        assertEquals(PlaybackErrorKind.NETWORK, PlaybackResilience.mapErrorKind(
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT))
+        assertEquals(PlaybackErrorKind.HTTP, PlaybackResilience.mapErrorKind(
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS))
+        assertEquals(PlaybackErrorKind.HTTP, PlaybackResilience.mapErrorKind(
+            PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND))
+        assertEquals(PlaybackErrorKind.FORMAT, PlaybackResilience.mapErrorKind(
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED))
+        assertEquals(PlaybackErrorKind.FORMAT, PlaybackResilience.mapErrorKind(
+            PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE))
+        assertEquals(PlaybackErrorKind.CODEC, PlaybackResilience.mapErrorKind(
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED))
+        assertEquals(PlaybackErrorKind.CODEC, PlaybackResilience.mapErrorKind(
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED))
+        assertEquals(PlaybackErrorKind.GENERIC, PlaybackResilience.mapErrorKind(
+            PlaybackException.ERROR_CODE_UNSPECIFIED))
     }
 
     // -- reconnectDelayMs -----------------------------------------------------

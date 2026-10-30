@@ -1,58 +1,32 @@
 package com.iptv.feature.player.ui
 
-import android.content.Context
-import android.net.ConnectivityManager
-import android.net.Network
-import android.util.Log
 import androidx.annotation.StringRes
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.ResolvingDataSource
-import androidx.media3.datasource.HttpDataSource
-import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.session.MediaSession
+import com.iptv.core.common.cast.CastController
 import com.iptv.core.common.download.DownloadController
 import com.iptv.core.common.pip.PipController
-import com.iptv.core.network.DEFAULT_USER_AGENT
+import com.iptv.core.common.playback.PlaybackErrorKind
+import com.iptv.core.common.playback.PlaybackSession
+import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.storage.dao.CategoryDao
 import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.DownloadDao
 import com.iptv.core.storage.dao.GuideRow
-import com.iptv.core.storage.dao.PlaybackHistoryDao
 import com.iptv.core.storage.dao.ProgrammeDao
-import com.iptv.core.common.prefs.AppPreferences
-import com.iptv.core.storage.dao.SourceDao
 import com.iptv.core.storage.entity.CategoryEntity
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.DownloadEntity
 import com.iptv.core.storage.entity.DownloadSections
 import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.core.storage.entity.Kinds
-import com.iptv.core.storage.entity.PlaybackHistoryEntity
 import com.iptv.core.storage.entity.ProgrammeEntity
-import com.iptv.core.storage.entity.SourceEntity
-import com.iptv.core.common.cast.CastController
-import com.iptv.core.common.cast.CastEvent
-import com.iptv.core.common.cast.CastStreamSpec
 import com.iptv.feature.player.R
-import com.iptv.core.network.StreamProber
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -66,30 +40,30 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 
-/** Reproducción local/Cast. Ambos players pertenecen al ViewModel y se liberan en onCleared. */
-@kotlinx.coroutines.ExperimentalCoroutinesApi
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+/**
+ * Adaptador de UI sobre [PlaybackSession] (singleton de proceso en
+ * `:feature:player`): pliega el estado de la sesión, del [CastController] y
+ * de los DAOs en el [UiState] que consumen las pantallas táctil y de TV.
+ *
+ * La sesión es quien posee el player, la reconexión, el zapping y la
+ * persistencia de progreso; este ViewModel mantiene sólo lo que es estado
+ * de pantalla (rail, EPG de overlays, descarga del item y diálogos).
+ */
+@ExperimentalCoroutinesApi
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
-    @ApplicationContext private val appContext: Context,
     savedStateHandle: SavedStateHandle,
     private val channelDao: ChannelDao,
     private val categoryDao: CategoryDao,
-    private val sourceDao: SourceDao,
-    private val playbackHistoryDao: PlaybackHistoryDao,
-    private val downloadDao: DownloadDao,
     private val programmeDao: ProgrammeDao,
+    private val downloadDao: DownloadDao,
     private val downloadController: DownloadController,
     private val pipController: PipController,
     private val prefs: AppPreferences,
-    private val okHttpClient: OkHttpClient,
     private val castController: CastController,
+    private val playbackSession: PlaybackSession,
 ) : ViewModel() {
 
     data class UiState(
@@ -112,53 +86,30 @@ class PlayerViewModel @Inject constructor(
         val networkLost: Boolean = false,
     )
 
-    private var channelId: Long = savedStateHandle.get<Long>("channelId")
+    private val channelId: Long = savedStateHandle.get<Long>("channelId")
         ?: error("channelId es obligatorio en la ruta del reproductor")
-
-    /** Canal anterior para el "recall" (tecla LAST_CHANNEL del mando). */
-    private var previousChannelId: Long? = null
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    private val _player = MutableStateFlow<Player?>(null)
-    val player: StateFlow<Player?> = _player.asStateFlow()
+    /** Player visible (local o remoto), propiedad de la sesión. */
+    val player: StateFlow<Player?> = playbackSession.player
 
-    private var localPlayer: ExoPlayer? = null
-    private var mediaSession: MediaSession? = null
-    private var mediaItem: MediaItem? = null
-    /**
-     * Cabeceras HTTP del canal en reproducción (UA/Referer). El
-     * ResolvingDataSource las aplica a cada petición — también a los
-     * segmentos HLS, cuya URI no es la del item — así un zap a un canal con
-     * #EXTVLCOPT propio no hereda las del anterior.
-     */
-    @Volatile private var currentRequestHeaders: Map<String, String> = emptyMap()
+    /** Orden de zapping derivado de la sesión: habilita zap y dígitos. */
+    val hasChannelList: StateFlow<Boolean> = playbackSession.channelOrder
+        .map { it.size > 1 }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    /**
-     * URL remota del item en reproducción. Cuando el media local es un
-     * fichero descargado (file://) el receptor Cast sigue necesitando la
-     * URL http original.
-     */
-    private var remoteUrl: String? = null
-
-    /** One-shot guard: format errors retry once with a sniffed MIME. */
-    private var mimeRetried = false
-
-    /** Orden de canales en directo de la fuente activa para el zapping. */
-    private var channelOrder: List<Long> = emptyList()
+    // -- Rail de canales (estado de pantalla, no de sesión) ---------------------
 
     private val _channelList = MutableStateFlow<List<ChannelEntity>>(emptyList())
     val channelList: StateFlow<List<ChannelEntity>> = _channelList.asStateFlow()
-
-    private val _hasChannelList = MutableStateFlow(false)
-    val hasChannelList: StateFlow<Boolean> = _hasChannelList.asStateFlow()
-    private var channelListRequested = false
 
     /** La lista del rail ya respondió una vez: sin ella un filtro vacío
      *  mostraría un spinner eterno en lugar de "sin canales". */
     private val _channelListLoaded = MutableStateFlow(false)
     val channelListLoaded: StateFlow<Boolean> = _channelListLoaded.asStateFlow()
+    private var channelListRequested = false
 
     /** Filtro activo del rail de canales de TV (no afecta al orden de zap). */
     sealed interface RailFilter {
@@ -256,12 +207,13 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    // -- Cast: el volumen y los permisos siguen siendo cosa de pantalla ---------
+
     val castVolume = castController.volume
     val castMuted = castController.muted
 
     val isInPipMode: StateFlow<Boolean> = pipController.isInPipMode
 
-    /** Volumen actual del receptor Cast (0..1) y silencio. */
     fun refreshCastVolume() = castController.refreshCastVolume()
 
     fun setCastVolume(volume: Float) = castController.setVolume(volume)
@@ -330,223 +282,56 @@ class PlayerViewModel @Inject constructor(
 
     fun markMediaPermsAsked() = prefs.setCastPermissionsAsked()
 
-    // -- Temporizador de apagado -------------------------------------------
+    // -- Delegación a la sesión -------------------------------------------------
 
-    private var sleepTimerJob: kotlinx.coroutines.Job? = null
+    /** Cambia a un canal concreto desde la lista del reproductor. */
+    fun playChannel(id: Long) = playbackSession.play(id)
+
+    /** Zapping: canal anterior/siguiente de la fuente, retorno circular. */
+    fun playAdjacent(delta: Int) = playbackSession.playAdjacent(delta)
+
+    /** "Recall" del mando: alterna con el canal anterior, si lo hay. */
+    fun zapToPrevious() = playbackSession.zapToPrevious()
+
+    /** Seek relativo (sólo VOD). */
+    fun seekBy(deltaMs: Long) = playbackSession.seekBy(deltaMs)
 
     /** Programa la pausa en [minutes] minutos; null la cancela. */
-    fun setSleepTimer(minutes: Int?) {
-        sleepTimerJob?.cancel()
-        sleepTimerJob = null
-        if (minutes == null) {
-            _uiState.update { it.copy(sleepTimerEndAtMs = null) }
-            return
-        }
-        val endAt = System.currentTimeMillis() + minutes * 60_000L
-        _uiState.update { it.copy(sleepTimerEndAtMs = endAt) }
-        sleepTimerJob = viewModelScope.launch {
-            delay(minutes * 60_000L)
-            _player.value?.pause()
-            _uiState.update { it.copy(sleepTimerEndAtMs = null) }
-        }
-    }
+    fun setSleepTimer(minutes: Int?) = playbackSession.setSleepTimer(minutes)
 
-    // Fuera de viewModelScope para poder hacer la escritura final en onCleared.
-    private val historyScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** Reintenta tras un error. */
+    fun retry() = playbackSession.retry()
 
-    /** Vigía de buffering: streams caídos pueden dejar al player en
-     *  BUFFERING indefinidamente; pasado el umbral entra en reconexión. */
-    private var bufferingWatchdog: kotlinx.coroutines.Job? = null
+    /** Termina la sesión Cast y limpia el aviso. */
+    fun returnToMobile() = playbackSession.returnToMobile()
 
-    /** Reconexión automática ante señal inestable (errores retriables). */
-    private var reconnectJob: kotlinx.coroutines.Job? = null
-    private var reconnectAttempts = 0
-
-    /** Parámetros de búfer del perfil elegido en Ajustes (leído al abrir). */
-    private var bufferParams = PlaybackResilience.bufferParams(PlaybackResilience.PROFILE_AUTO)
-
-    private var networkCallback: ConnectivityManager.NetworkCallback? = null
-
-    private val localListener = object : Player.Listener {
-        override fun onPlayerError(error: PlaybackException) {
-            bufferingWatchdog?.cancel()
-            bufferingWatchdog = null
-            // Emitiendo, el player local está pausado y el mando lo lleva el
-            // receptor: un error suyo no debe tapar la pantalla de Cast.
-            if (_uiState.value.isCasting) {
-                Log.w(TAG, "Local error while casting: ${error.errorCodeName}")
-                return
-            }
-            if (sniffRetry(error)) return
-            if (PlaybackResilience.isRetriableError(error.errorCode, httpStatusOf(error)) &&
-                scheduleReconnect()
-            ) {
-                return
-            }
-            stopReconnect()
-            _uiState.update { it.copy(errorRes = mapPlaybackError(error)) }
-        }
-
-        override fun onPlaybackStateChanged(playbackState: Int) {
-            when (playbackState) {
-                Player.STATE_BUFFERING -> {
-                    if (bufferingWatchdog?.isActive != true) {
-                        // Mientras siga bufferizando, cada caducidad del vigía
-                        // cuenta como un intento de reconexión: un stream
-                        // colgado que no llega a errorar también se recupera.
-                        bufferingWatchdog = viewModelScope.launch {
-                            while (true) {
-                                delay(BUFFERING_TIMEOUT_MS)
-                                if (_uiState.value.isCasting) return@launch
-                                if (!scheduleReconnect()) {
-                                    _uiState.update {
-                                        it.copy(errorRes = R.string.player_error_timeout)
-                                    }
-                                    return@launch
-                                }
-                            }
-                        }
-                    }
-                }
-                Player.STATE_READY -> {
-                    bufferingWatchdog?.cancel()
-                    bufferingWatchdog = null
-                    // El stream se recuperó: se limpia el aviso y el contador
-                    // de reconexión para que el próximo corte arranque de 0.
-                    reconnectJob?.cancel()
-                    reconnectAttempts = 0
-                    if (_uiState.value.errorRes == R.string.player_error_timeout ||
-                        _uiState.value.reconnectAttempt != null
-                    ) {
-                        _uiState.update {
-                            it.copy(errorRes = null, reconnectAttempt = null)
-                        }
-                    }
-                }
-                else -> {
-                    bufferingWatchdog?.cancel()
-                    bufferingWatchdog = null
-                }
-            }
-        }
-    }
-
-    /**
-     * Encola un reintento automático con backoff exponencial. Devuelve false
-     * cuando se agotan los intentos (salvo reconexión continua en directo):
-     * el llamador muestra entonces el error.
-     */
-    private fun scheduleReconnect(): Boolean {
-        if (_uiState.value.isCasting || castController.uiState.value.transferPending) return false
-        val attempt = reconnectAttempts + 1
-        val unlimited = _uiState.value.isLive && prefs.isLiveReconnectContinuous()
-        if (!unlimited && attempt > PlaybackResilience.MAX_RECONNECT_ATTEMPTS) return false
-        reconnectAttempts = attempt
-        _uiState.update { it.copy(errorRes = null, reconnectAttempt = attempt) }
-        if (reconnectJob?.isActive != true) {
-            reconnectJob = viewModelScope.launch {
-                delay(PlaybackResilience.reconnectDelayMs(attempt))
-                reconnectJob = null
-                retryLocalPlayback()
-            }
-        }
-        return true
-    }
-
-    private fun stopReconnect() {
-        reconnectJob?.cancel()
-        reconnectJob = null
-        if (_uiState.value.reconnectAttempt != null) {
-            _uiState.update { it.copy(reconnectAttempt = null) }
-        }
-    }
-
-    /**
-     * Los paneles que sirven TS en URLs .m3u8 (o mienten el formato) rompen el
-     * parser del manifiesto/contenedor: se reintenta una vez con el MIME que
-     * revela el propio payload. Sin coste cuando el servidor es honesto.
-     */
-    private fun sniffRetry(error: PlaybackException): Boolean {
-        val item = mediaItem
-        val url = remoteUrl
-        val channel = _uiState.value.channel
-        if (item == null || url == null || channel == null || mimeRetried ||
-            item.localConfiguration?.uri?.scheme == "file" ||
-            (error.errorCode != PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED &&
-                error.errorCode != PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED)
-        ) {
-            return false
-        }
-        mimeRetried = true
-        viewModelScope.launch {
-            val (ua, ref) = headersFor(channel)
-            val mime = withContext(Dispatchers.IO) {
-                StreamProber.probe(okHttpClient, url, ua, ref).mimeType
-            } ?: return@launch
-            // El usuario pudo zapear durante el sondeo: el MIME sólo se
-            // aplica si el item en reproducción sigue siendo el que falló.
-            if (mediaItem !== item) return@launch
-            Log.w(TAG, "Retrying playback with sniffed mime $mime")
-            mediaItem = item.buildUpon().setMimeType(mime).build()
-            retryLocalPlayback()
-        }
-        return true
-    }
-
-    /** Extrae el código HTTP si el fallo vino de una respuesta del servidor. */
-    private fun httpStatusOf(error: PlaybackException): Int? {
-        var cause: Throwable? = error.cause
-        while (cause != null) {
-            if (cause is HttpDataSource.InvalidResponseCodeException) {
-                return cause.responseCode
-            }
-            cause = cause.cause
-        }
-        return null
-    }
-
-    /**
-     * Vigila la conectividad real: sin red se marca de inmediato (no hace
-     * falta esperar al vigía) y al volver se reintenta sin esperar al backoff.
-     */
-    private fun registerNetworkCallback() {
-        val cm = appContext.getSystemService(ConnectivityManager::class.java) ?: return
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onLost(network: Network) {
-                _uiState.update { it.copy(networkLost = true) }
-            }
-
-            override fun onAvailable(network: Network) {
-                val wasLost = _uiState.value.networkLost
-                _uiState.update { it.copy(networkLost = false) }
-                if (!wasLost) return
-                viewModelScope.launch {
-                    val local = localPlayer ?: return@launch
-                    val s = _uiState.value
-                    // Errores fatales (códec, formato, 404…) no se benefician
-                    // de la vuelta de la red: sólo se reintenta lo retriable.
-                    val retriableError = s.errorRes == null ||
-                        s.errorRes == R.string.player_error_network ||
-                        s.errorRes == R.string.player_error_timeout
-                    val needsKick = retriableError && (
-                        local.playbackState == Player.STATE_BUFFERING ||
-                            local.playbackState == Player.STATE_IDLE ||
-                            s.reconnectAttempt != null ||
-                            s.errorRes != null
-                        )
-                    if (needsKick && !s.isCasting) {
-                        reconnectJob?.cancel()
-                        reconnectJob = null
-                        retryLocalPlayback()
-                    }
-                }
-            }
-        }
-        runCatching { cm.registerDefaultNetworkCallback(callback) }
-            .onSuccess { networkCallback = callback }
-    }
+    // -- Plegado del estado de la sesión y del Cast en UiState -------------------
 
     init {
+        // Canal en reproducción → entidad completa (la EPG y las descargas
+        // necesitan campos que el contrato neutro NowPlaying no lleva).
+        viewModelScope.launch {
+            playbackSession.nowPlaying.collect { np ->
+                val entity = np?.let { channelDao.findById(it.channelId) }
+                if (np != null) downloadChannelId.value = np.channelId
+                _uiState.update {
+                    it.copy(channel = entity, isLive = np?.isLive ?: true)
+                }
+            }
+        }
+        viewModelScope.launch {
+            playbackSession.info.collect { info ->
+                _uiState.update {
+                    it.copy(
+                        errorRes = info.error?.let(::errorResFor),
+                        reconnectAttempt = info.reconnectAttempt,
+                        networkLost = info.networkLost,
+                        showReturnToMobile = info.showReturnToMobile,
+                        sleepTimerEndAtMs = info.sleepTimerEndAtMs,
+                    )
+                }
+            }
+        }
         // El controller publica el estado de la sesión Cast; el VM lo pliega
         // en su UiState para que la pantalla no conozca la frontera.
         viewModelScope.launch {
@@ -563,466 +348,31 @@ class PlayerViewModel @Inject constructor(
                 }
             }
         }
-        viewModelScope.launch {
-            castController.events.collect { event ->
-                when (event) {
-                    CastEvent.RemoteActive -> {
-                        localPlayer?.pause()
-                        castController.remotePlayer?.let { remote ->
-                            _player.value = remote
-                            mediaSession?.player = remote
-                        }
-                        _uiState.update {
-                            it.copy(errorRes = null, showReturnToMobile = false)
-                        }
-                    }
-                    is CastEvent.LocalResume -> {
-                        val remote = castController.remotePlayer
-                        val local = localPlayer
-                        if (event.transferFromRemote && remote != null && local != null) {
-                            transferPlayback(remote, local)
-                        }
-                        restoreLocalPlayback(
-                            event.playWhenReady ?: localPlayer?.playWhenReady == true,
-                            event.positionMs,
-                        )
-                        if (event.showError) {
-                            _uiState.update {
-                                it.copy(
-                                    errorRes = R.string.player_error_cast_format,
-                                    showReturnToMobile = true,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        viewModelScope.launch { loadChannel() }
-    }
-
-    private suspend fun loadChannel() {
-        val channel = channelDao.findById(channelId)
-        if (channel == null) {
-            _uiState.update { it.copy(errorRes = R.string.player_error_channel_missing) }
-            return
-        }
-        if (channelDao.isInLockedCategory(channel.id)) {
-            _uiState.update { it.copy(errorRes = R.string.player_error_locked) }
-            return
-        }
-        if (channel.kind == Kinds.LIVE) {
-            // Solo ids para el zapping: cargar ~50k entidades completas por cada
-            // apertura del reproductor era el mayor coste del arranque.
-            channelOrder = channelDao.channelIds(channel.sourceId, Kinds.LIVE)
-            _hasChannelList.value = channelOrder.size > 1
-            // Arranque de TV "donde lo dejaste": el último canal visto.
-            prefs.setLastLiveChannelId(channel.id)
-        }
-        val isLive = channel.kind == Kinds.LIVE
-        _uiState.update { it.copy(channel = channel, isLive = isLive) }
-        val source = sourceDao.findById(channel.sourceId)
-
-        // Prioridad: cabeceras propias del canal (#EXTVLCOPT) > las de la fuente.
-        val (userAgent, referrer) = headersFor(channel, source)
-        currentRequestHeaders = requestHeaders(userAgent, referrer)
-
-        // OkHttpDataSource comparte el pool del cliente inyectado: el zapping
-        // reutiliza la conexión al mismo host en vez de rehacer TCP+TLS.
-        // ResolvingDataSource lee currentRequestHeaders por petición — las
-        // default properties de la fábrica quedarían fijas para el canal A.
-        val httpFactory = ResolvingDataSource.Factory(
-            OkHttpDataSource.Factory(okHttpClient),
-        ) { spec ->
-            spec.buildUpon().setHttpRequestHeaders(currentRequestHeaders).build()
-        }
-
-        bufferParams = PlaybackResilience.bufferParams(prefs.bufferProfile())
-        val item = buildMediaItem(channel, isLive)
-        mediaItem = item
-        remoteUrl = channel.streamUrl
-        // EXTENSION_RENDERER_MODE_ON: FFmpeg sólo cuando no hay códec nativo
-        // (AC3/EAC3/DTS, habitual en IPTV); con PREFER también decodificaría
-        // AAC por software y quemaría batería. DefaultDataSource delega
-        // file:// a FileDataSource (descargas) y http(s):// a la fábrica
-        // HTTP configurada arriba.
-        val renderersFactory = DefaultRenderersFactory(appContext)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-        // ForStreaming: las descargas (file://) son "local playback" y
-        // mantienen sus defaults rápidos; sólo se toca el stream por red.
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMsForStreaming(
-                bufferParams.minBufferMs,
-                bufferParams.maxBufferMs,
-                bufferParams.bufferForPlaybackMs,
-                bufferParams.bufferForPlaybackAfterRebufferMs,
-            )
-            .build()
-        val newLocalPlayer = ExoPlayer.Builder(appContext, renderersFactory)
-            .setLoadControl(loadControl)
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(DefaultDataSource.Factory(appContext, httpFactory)),
-            )
-            .build()
-            .also {
-                // WAKE_MODE_NETWORK = WifiLock: evita que el ahorro de energía
-                // del Wi-Fi corte el stream cuando la pantalla duerme o la
-                // señal va justa (el permiso ya está en el manifest).
-                it.setWakeMode(C.WAKE_MODE_NETWORK)
-                it.setHandleAudioBecomingNoisy(true)
-                it.addListener(localListener)
-            }
-        localPlayer = newLocalPlayer
-        registerNetworkCallback()
-
-        val resumeAt = if (isLive) 0L else resumePosition(channel.id)
-        try {
-            newLocalPlayer.setMediaItem(item, resumeAt)
-            newLocalPlayer.prepare()
-            newLocalPlayer.playWhenReady = true
-            _player.value = newLocalPlayer
-            // Publica la sesión para controles del sistema (bloqueo, BT, Wear OS).
-            mediaSession?.release()
-            mediaSession = MediaSession.Builder(appContext, newLocalPlayer).build()
-        } catch (_: IllegalStateException) {
-            newLocalPlayer.release()
-            localPlayer = null
-            _uiState.update { it.copy(errorRes = R.string.player_error_format) }
-            return
-        }
-
-        if (!isLive) {
-            viewModelScope.launch {
-                while (isActive) {
-                    delay(HISTORY_SAVE_INTERVAL_MS)
-                    persistProgress()
-                }
-            }
-        }
-
-        // El player remoto vive en el controller (ámbito de proceso); si ya
-        // hay sesión activa se transfiere la reproducción en curso.
-        castController.attach(newLocalPlayer)
-        mediaSession?.let { castController.setMediaSessionToken(it.platformToken) }
-        castController.setZapHandler { delta -> playAdjacent(delta) }
-        if (castController.isSessionAvailable) {
-            viewModelScope.launch {
-                castController.transferToCast(
-                    item,
-                    newLocalPlayer.currentPosition.coerceAtLeast(0L),
-                    newLocalPlayer.playWhenReady,
-                    castSpec(channel),
-                )
-            }
-        }
-    }
-
-    /** Cabeceras del canal: #EXTVLCOPT propio > cabeceras de la fuente. */
-    private suspend fun headersFor(channel: ChannelEntity): Pair<String, String?> =
-        headersFor(channel, sourceDao.findById(channel.sourceId))
-
-    private fun headersFor(channel: ChannelEntity, source: SourceEntity?): Pair<String, String?> {
-        val userAgent = channel.userAgent?.takeIf { it.isNotBlank() }
-            ?: source?.userAgent ?: DEFAULT_USER_AGENT
-        val referrer = channel.referrer?.takeIf { it.isNotBlank() }
-            ?: source?.referrer?.takeIf { it.isNotBlank() }
-        return userAgent to referrer
-    }
-
-    private fun requestHeaders(userAgent: String, referrer: String?) = buildMap {
-        put("User-Agent", userAgent)
-        referrer?.let { put("Referer", it) }
-    }
-
-    /** Spec del stream remoto (URL + cabeceras) que el receptor debe cargar. */
-    private suspend fun castSpec(channel: ChannelEntity): CastStreamSpec {
-        val (userAgent, referrer) = headersFor(channel)
-        return CastStreamSpec(
-            remoteUrl = remoteUrl ?: channel.streamUrl,
-            userAgent = userAgent,
-            referrer = referrer,
-            channelTitle = channel.name,
-            containerExt = channel.containerExt,
-        )
-    }
-
-    private suspend fun resumePosition(channelId: Long): Long =
-        playbackHistoryDao.find(channelId)?.let { entry ->
-            val completed = entry.durationMs > 0 &&
-                entry.positionMs >= entry.durationMs * COMPLETE_THRESHOLD
-            if (completed) 0L else entry.positionMs
-        } ?: 0L
-
-    /** Cambia a un canal concreto desde la lista del reproductor. */
-    fun playChannel(id: Long) {
-        if (id == channelId) return
-        viewModelScope.launch { switchChannel(id) }
-    }
-
-    /** Zapping: cambia al canal anterior/siguiente de la fuente, con retorno circular. */
-    fun playAdjacent(delta: Int) {
-        if (channelOrder.size < 2) return
-        val index = channelOrder.indexOf(channelId)
-        if (index < 0) return
-        val nextId = channelOrder[Math.floorMod(index + delta, channelOrder.size)]
-        if (nextId == channelId) return
-        viewModelScope.launch { switchChannel(nextId) }
-    }
-
-    /** "Recall" del mando: alterna con el canal anterior, si lo hay. */
-    fun zapToPrevious() {
-        previousChannelId?.let(::playChannel)
-    }
-
-    private suspend fun switchChannel(id: Long) {
-        val channel = channelDao.findById(id)?.takeUnless { channelDao.isInLockedCategory(id) }
-            ?: return
-        previousChannelId = channelId
-        channelId = id
-        downloadChannelId.value = id
-        mimeRetried = false
-        // El canal nuevo arranca su propio vigía y su propia reconexión,
-        // sin heredar ni el tiempo ni los intentos del anterior.
-        bufferingWatchdog?.cancel()
-        bufferingWatchdog = null
-        stopReconnect()
-        reconnectAttempts = 0
-        val isLive = channel.kind == Kinds.LIVE
-        if (isLive) {
-            // El zap también actualiza el "último canal" del arranque de TV.
-            prefs.setLastLiveChannelId(channel.id)
-        }
-        _uiState.update {
-            it.copy(
-                channel = channel,
-                isLive = isLive,
-                errorRes = null,
-                castErrorDetail = null,
-                reconnectAttempt = null,
-            )
-        }
-        val (ua, ref) = headersFor(channel)
-        currentRequestHeaders = requestHeaders(ua, ref)
-        val item = buildMediaItem(channel, isLive)
-        mediaItem = item
-        remoteUrl = channel.streamUrl
-        val resumeAt = if (isLive) 0L else resumePosition(channel.id)
-        localPlayer?.let { local ->
-            local.setMediaItem(item, resumeAt)
-            local.prepare()
-            if (!_uiState.value.isCasting) local.playWhenReady = true
-        }
-        if (_uiState.value.isCasting) {
-            castController.loadOnRemote(item, castSpec(channel))
-        }
-    }
-
-    /** Lee el estado del player (hilo principal) y encola la escritura en IO. */
-    private fun persistProgress() {
-        val channel = _uiState.value.channel ?: return
-        if (channel.kind == Kinds.LIVE) return
-        val player = _player.value ?: return
-        val duration = player.duration
-        val position = player.currentPosition
-        if (duration <= 0 || duration == C.TIME_UNSET || position <= 0) return
-        historyScope.launch { writeProgress(channel, position, duration) }
-    }
-
-    private suspend fun writeProgress(channel: ChannelEntity, position: Long, duration: Long) {
-        if (position >= duration * COMPLETE_THRESHOLD) {
-            playbackHistoryDao.delete(channel.id)
-        } else {
-            playbackHistoryDao.upsert(
-                PlaybackHistoryEntity(
-                    channelId = channel.id,
-                    sourceId = channel.sourceId,
-                    positionMs = position,
-                    durationMs = duration,
-                    updatedAt = System.currentTimeMillis(),
-                ),
-            )
-        }
-    }
-
-    private suspend fun buildMediaItem(channel: ChannelEntity, isLive: Boolean): MediaItem {
-        // Si hay una descarga completa se reproduce el fichero local; la URL
-        // remota se conserva aparte para Cast (el receptor no lee file://).
-        val downloaded = downloadDao.findCompleted(channel.id)
-        val uri = downloaded?.localPath
-            ?.let { path -> java.io.File(path).takeIf { it.exists() } }
-            ?.let { android.net.Uri.fromFile(it).toString() }
-            ?: channel.streamUrl
-        return PlaybackMediaItemFactory.create(
-            PlaybackMediaItemFactory.spec(
-                streamUrl = uri,
-                title = channel.name,
-                artworkUrl = channel.logoUrl,
-                isLive = isLive,
-                liveTargetOffsetMs = bufferParams.liveTargetOffsetMs,
-            ),
-        )
-    }
-
-
-
-
-
-    private fun restoreLocalPlayback(
-        playWhenReady: Boolean = localPlayer?.playWhenReady == true,
-        positionMs: Long? = null,
-    ) {
-        val local = localPlayer ?: return
-        _player.value = local
-        mediaSession?.player = local
-        // El controlador detiene el player local al transferir (libera la
-        // conexión del panel): en IDLE se recarga el item — en la posición
-        // guardada si la hay (VOD), o en el borde vivo en directo.
-        if (local.playbackState == Player.STATE_IDLE) {
-            val item = mediaItem
-            if (item != null) {
-                if (positionMs != null) local.setMediaItem(item, positionMs)
-                else local.setMediaItem(item)
-            }
-            local.prepare()
-        }
-        local.playWhenReady = playWhenReady
-        _uiState.update {
-            it.copy(
-                isCasting = false,
-                isCastConnecting = false,
-                castDeviceName = null,
-                showReturnToMobile = false,
-            )
-        }
-    }
-
-    private fun transferPlayback(from: Player, to: Player): Boolean = runCatching {
-        val item = mediaItem ?: from.currentMediaItem ?: return@runCatching false
-        val position = from.currentPosition.coerceAtLeast(0L)
-        val shouldPlay = from.playWhenReady
-        to.setMediaItem(item, position)
-        to.prepare()
-        to.playWhenReady = shouldPlay
-        from.pause()
-        true
-    }.getOrDefault(false)
-
-
-
-    /** Recarga el MediaItem local: el player puede quedar en BUFFERING o IDLE
-     *  tras un fallo y prepare() solo no reintenta una carga en curso. En
-     *  directo se vuelve al borde vivo; en VOD se conserva la posición. */
-    private fun retryLocalPlayback() {
-        if (_uiState.value.isCasting || castController.uiState.value.transferPending) return
-        val player = localPlayer ?: return
-        val item = mediaItem ?: return
-        val startAt = if (_uiState.value.isLive) {
-            0L
-        } else {
-            player.currentPosition.coerceAtLeast(0L)
-        }
-        player.setMediaItem(item, startAt)
-        player.prepare()
-        player.playWhenReady = true
-    }
-
-    fun retry() {
-        reconnectJob?.cancel()
-        reconnectJob = null
-        reconnectAttempts = 0
-        castController.clearReceiverError()
-        _uiState.update {
-            it.copy(
-                errorRes = null,
-                reconnectAttempt = null,
-                showReturnToMobile = false,
-                castErrorDetail = null,
-            )
-        }
-        val player = _player.value ?: return
-        if (player === localPlayer) {
-            retryLocalPlayback()
-        } else {
-            player.prepare()
-            player.play()
-        }
-    }
-
-    fun returnToMobile() {
-        castController.endSession()
-        _uiState.update { it.copy(showReturnToMobile = false) }
-    }
-
-    @StringRes
-    private fun mapPlaybackError(error: PlaybackException): Int = when (error.errorCode) {
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
-        -> R.string.player_error_network
-
-        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
-        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
-        PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
-        -> R.string.player_error_http
-
-        PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
-        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
-        PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
-        -> R.string.player_error_format
-
-        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-        PlaybackException.ERROR_CODE_DECODING_FAILED,
-        -> R.string.player_error_codec
-
-        else -> R.string.player_error_generic
+        playbackSession.play(channelId)
     }
 
     override fun onCleared() {
-        // Última escritura de progreso antes de liberar los players; la lectura
-        // de posición ocurre en el hilo principal y la escritura en IO.
-        val channel = _uiState.value.channel
-        val player = _player.value
-        if (channel != null && channel.kind != Kinds.LIVE && player != null) {
-            val duration = player.duration
-            val position = player.currentPosition
-            if (duration > 0 && duration != C.TIME_UNSET && position > 0) {
-                runBlocking {
-                    withContext(Dispatchers.IO) { writeProgress(channel, position, duration) }
-                }
-            }
-        }
-        historyScope.cancel()
-        reconnectJob?.cancel()
-        bufferingWatchdog?.cancel()
-        networkCallback?.let { cb ->
-            runCatching {
-                appContext.getSystemService(ConnectivityManager::class.java)
-                    ?.unregisterNetworkCallback(cb)
-            }
-        }
-        networkCallback = null
         pipController.autoEnterOnUserLeave = false
-        // El CastPlayer y la sesión son de proceso: detach() sólo suelta los
-        // listeners de esta pantalla; emitir sigue vivo al salir y el proxy
-        // lo desmonta el servicio cuando la sesión termina.
-        castController.setMediaSessionToken(null)
-        mediaSession?.release()
-        mediaSession = null
-        castController.detach()
-        localPlayer?.removeListener(localListener)
-        localPlayer?.release()
-        localPlayer = null
-        _player.value = null
+        // La sesión es de proceso pero hoy el ViewModel es su único
+        // consumidor: morir equivale a liberar (ciclo anterior intacto).
+        playbackSession.release()
         super.onCleared()
     }
 
+    @StringRes
+    private fun errorResFor(kind: PlaybackErrorKind): Int = when (kind) {
+        PlaybackErrorKind.NETWORK -> R.string.player_error_network
+        PlaybackErrorKind.HTTP -> R.string.player_error_http
+        PlaybackErrorKind.FORMAT -> R.string.player_error_format
+        PlaybackErrorKind.CODEC -> R.string.player_error_codec
+        PlaybackErrorKind.TIMEOUT -> R.string.player_error_timeout
+        PlaybackErrorKind.CHANNEL_MISSING -> R.string.player_error_channel_missing
+        PlaybackErrorKind.LOCKED -> R.string.player_error_locked
+        PlaybackErrorKind.CAST_FORMAT -> R.string.player_error_cast_format
+        PlaybackErrorKind.GENERIC -> R.string.player_error_generic
+    }
+
     private companion object {
-        const val TAG = "IptvPlayer"
-        const val HISTORY_SAVE_INTERVAL_MS = 10_000L
-        const val BUFFERING_TIMEOUT_MS = 20_000L
         const val EPG_REFRESH_MS = 30_000L
-        const val COMPLETE_THRESHOLD = 0.95
     }
 }

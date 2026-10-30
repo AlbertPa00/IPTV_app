@@ -37,6 +37,11 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   filtro no tiene resultados en vez de un spinner eterno.
 
 ### Corregido
+- Al abrir una película o episodio tras zapear desde un canal en directo
+  no se guardaba el punto de reproducción: ahora se registra igual que
+  al abrirlo directamente.
+
+### Corregido
 - Canales que no llegaban a emitir al Chromecast en cuentas con límite de
   conexiones del proveedor: el móvil ahora suelta su conexión antes de que
   el televisor pida el stream, y si el envío falla la reproducción continúa

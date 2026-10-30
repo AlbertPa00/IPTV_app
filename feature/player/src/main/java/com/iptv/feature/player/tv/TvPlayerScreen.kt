@@ -184,15 +184,7 @@ fun TvPlayerScreen(
             }
             TvAction.OpenMenu -> overlay = TvOverlay.MENU
             TvAction.TogglePlayPause -> playPause?.onClick()
-            is TvAction.SeekBy -> player?.let {
-                // TIME_UNSET en duration haría coerceIn lanzar (min > max).
-                if (it.duration > 0) {
-                    it.seekTo(
-                        (it.currentPosition + action.deltaMs)
-                            .coerceIn(0L, it.duration),
-                    )
-                }
-            }
+            is TvAction.SeekBy -> viewModel.seekBy(action.deltaMs)
             is TvAction.ZapBy -> {
                 viewModel.playAdjacent(action.delta)
                 overlay = TvOverlay.INFO

@@ -7,7 +7,10 @@ La aplicación usa Vertical Slice Architecture como monolito modular.
 - `:app`: composition root, navegación y ensamblado del APK.
 - `:feature:source`: alta M3U/Xtream y gestión de fuentes.
 - `:feature:catalog`: categorías, búsqueda, Paging y favoritos.
-- `:feature:player`: reproducción Media3 y UI del reproductor. Consume el
+- `:feature:player`: reproducción Media3 y UI del reproductor. Implementa el
+  contrato `PlaybackSession` (`:core:common`, singleton de proceso: player,
+  zapping, reconexión y zapping Cast sobreviven a las pantallas; el
+  ViewModel del reproductor es sólo un adaptador de UI). Consume el
   contrato `CastController` (`:core:common`) sin conocer el Cast SDK.
 - `:feature:cast`: orquestación Chromecast (prober, proxy HTTP, segmentadores
   TS→HLS, sesión FFmpeg, servicio foreground). El `CastPlayer` vive en

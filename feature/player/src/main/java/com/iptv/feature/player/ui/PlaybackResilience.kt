@@ -2,6 +2,7 @@ package com.iptv.feature.player.ui
 
 import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.DefaultLoadControl
+import com.iptv.core.common.playback.PlaybackErrorKind
 import com.iptv.core.common.prefs.AppPreferences
 
 /**
@@ -80,6 +81,37 @@ object PlaybackResilience {
 
         else -> false
     }
+
+    /**
+     * Clasifica un fallo de reproducción en [PlaybackErrorKind] para la UI.
+     * Vive aquí (y no en la sesión) para mantenerla pura y testeable: la
+     * traducción a recursos de texto la hace la capa de presentación.
+     */
+    fun mapErrorKind(errorCode: Int): PlaybackErrorKind =
+        when (errorCode) {
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            -> PlaybackErrorKind.NETWORK
+
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+            PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+            PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
+            -> PlaybackErrorKind.HTTP
+
+            PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+            -> PlaybackErrorKind.FORMAT
+
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
+            -> PlaybackErrorKind.CODEC
+
+            else -> PlaybackErrorKind.GENERIC
+        }
 
     /** Backoff exponencial por intento de reconexión: 1 s, 2 s, 4 s… tope 10 s. */
     fun reconnectDelayMs(attempt: Int): Long {
