@@ -51,6 +51,10 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 - Los canales que exigen cabeceras propias (User-Agent/Referer vía
   #EXTVLCOPT) las aplican también al cambiar de canal y al emitir: antes el
   zapping y el Cast reutilizaban las del primer canal abierto.
+- Corregido un cierre inesperado relacionado con Chromecast
+  (RemoteServiceException en el servicio de notificaciones del SDK): se
+  desactiva la notificación duplicada de Cast del SDK al existir ya la
+  propia con controles de reproducción.
 
 ### Otras
 
