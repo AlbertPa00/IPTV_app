@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -19,6 +20,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.Color
@@ -48,6 +51,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.NavType
 import com.iptv.core.designsystem.components.LoadingState
 import com.iptv.core.designsystem.tv.LocalIsTv
+import com.iptv.core.designsystem.tv.tvSafeArea
 import com.iptv.feature.catalog.ui.ContentKind
 import com.iptv.feature.catalog.ui.VodCatalogViewModel
 import com.iptv.feature.catalog.ui.LiveTvScreen
@@ -55,6 +59,7 @@ import com.iptv.feature.catalog.ui.MovieDetailsScreen
 import com.iptv.feature.catalog.ui.VodCatalogScreen
 import com.iptv.feature.epg.ui.GuideScreen
 import com.iptv.feature.player.ui.PlayerScreen
+import com.iptv.feature.player.tv.PENDING_TV_CHANNEL_KEY
 import com.iptv.feature.player.tv.TvPlayerScreen
 import com.iptv.feature.series.ui.SeriesDetailsScreen
 import com.iptv.feature.source.ui.AddSourceScreen
@@ -155,17 +160,24 @@ private fun AppNavigation(
     // navegar, de modo que ninguna pantalla sale de la composición.
     var selectedTab by rememberSaveable { mutableStateOf(Routes.LiveTv) }
 
-    Scaffold(
-        bottomBar = {
-            if (showBottomBar) {
-                MainBottomBar(selected = selectedTab, onSelect = { selectedTab = it })
-            }
-        },
-    ) { innerPadding ->
+    // En TV reproducir no navega: el reproductor es la raíz y un segundo
+    // player/{id} apilado tendría otro ExoPlayer sonando a la vez. Se
+    // desapila hasta él y el canal llega por savedStateHandle.
+    val playChannel: (Long) -> Unit = { channelId ->
+        if (isTv && navController.popBackStack(Routes.Player, inclusive = false)) {
+            navController.currentBackStackEntry
+                ?.savedStateHandle
+                ?.set(PENDING_TV_CHANNEL_KEY, channelId)
+        } else {
+            navController.navigate(Routes.player(channelId))
+        }
+    }
+
+    val host: @Composable (Modifier) -> Unit = { hostModifier ->
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            modifier = Modifier.padding(innerPadding),
+            modifier = hostModifier,
             enterTransition = { fadeIn(tween(150)) },
             exitTransition = { fadeOut(tween(150)) },
             popEnterTransition = { fadeIn(tween(150)) },
@@ -215,7 +227,7 @@ private fun AppNavigation(
             composable(Routes.Home) {
                 HomeTabs(
                     selected = selectedTab,
-                    onPlayChannel = { navController.navigate(Routes.player(it)) },
+                    onPlayChannel = playChannel,
                     onMovieDetails = { navController.navigate(Routes.movieDetails(it)) },
                     onSeriesDetails = { navController.navigate(Routes.seriesDetails(it)) },
                     onAddSource = { navController.navigate(Routes.AddSource) },
@@ -225,7 +237,7 @@ private fun AppNavigation(
             composable(
                 route = Routes.Player,
                 arguments = listOf(navArgument("channelId") { type = NavType.LongType }),
-            ) {
+            ) { playerEntry ->
                 if (isTv) {
                     // En TV el reproductor es la raíz: si no hay nada que
                     // desapilar, atrás sale de la app.
@@ -234,6 +246,8 @@ private fun AppNavigation(
                         onExit = {
                             if (!navController.popBackStack()) activity?.finish()
                         },
+                        onBrowse = { navController.navigate(Routes.Home) },
+                        savedStateHandle = playerEntry.savedStateHandle,
                     )
                 } else {
                     PlayerScreen(onBack = { navController.popBackStack() })
@@ -245,7 +259,7 @@ private fun AppNavigation(
             ) {
                 SeriesDetailsScreen(
                     onBack = { navController.popBackStack() },
-                    onPlay = { navController.navigate(Routes.player(it)) },
+                    onPlay = playChannel,
                 )
             }
             composable(
@@ -254,9 +268,30 @@ private fun AppNavigation(
             ) {
                 MovieDetailsScreen(
                     onBack = { navController.popBackStack() },
-                    onPlay = { navController.navigate(Routes.player(it)) },
+                    onPlay = playChannel,
                 )
             }
+        }
+    }
+
+    if (isTv) {
+        // Riel lateral en vez de barra inferior: la navegación por pestañas
+        // vive a la izquierda, patrón de las apps de TV (y sólo en Home).
+        Row(Modifier.fillMaxSize()) {
+            if (showBottomBar) {
+                TvSideRail(selected = selectedTab, onSelect = { selectedTab = it })
+            }
+            Box(Modifier.weight(1f)) { host(Modifier.fillMaxSize()) }
+        }
+    } else {
+        Scaffold(
+            bottomBar = {
+                if (showBottomBar) {
+                    MainBottomBar(selected = selectedTab, onSelect = { selectedTab = it })
+                }
+            },
+        ) { innerPadding ->
+            host(Modifier.padding(innerPadding))
         }
     }
 }
@@ -358,6 +393,25 @@ private fun MainBottomBar(selected: String, onSelect: (String) -> Unit) {
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     indicatorColor = Color.Transparent,
                 ),
+            )
+        }
+    }
+}
+
+/** Equivalente vertical de [MainBottomBar] para TV: riel fijo a la
+ *  izquierda, al margen del overscan y navegable con el D-pad. */
+@Composable
+private fun TvSideRail(selected: String, onSelect: (String) -> Unit) {
+    NavigationRail(
+        containerColor = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.tvSafeArea(),
+    ) {
+        mainDestinations.forEach { destination ->
+            NavigationRailItem(
+                selected = selected == destination.route,
+                onClick = { onSelect(destination.route) },
+                icon = { Icon(destination.icon, contentDescription = null) },
+                label = { Text(stringResource(destination.labelRes)) },
             )
         }
     }

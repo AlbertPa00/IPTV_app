@@ -24,6 +24,9 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   todos los canales, sólo favoritos o una categoría concreta.
 - La app en TV abre en el último canal visto en vez de en el primero de
   la lista; si el canal ya no existe, cae al primer canal disponible.
+- Desde el menú del reproductor en TV se accede al catálogo (En directo,
+  Películas, Series, Guía y Ajustes) con un riel de navegación lateral;
+  al elegir contenido se vuelve al vídeo sin abrir otro reproductor.
 
 ### Corregido
 - Canales que no llegaban a emitir al Chromecast en cuentas con límite de

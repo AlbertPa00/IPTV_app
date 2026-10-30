@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import androidx.media3.ui.compose.PlayerSurface
@@ -82,10 +83,19 @@ private enum class TvMenuDialog { TRACKS, SLEEP }
  * Reutiliza [PlayerViewModel] — el motor es el mismo que en la pantalla
  * táctil; lo que cambia es el modelo de interacción (teclas, no gestos).
  */
+/**
+ * Clave de savedStateHandle por la que el catálogo devuelve un canal al
+ * reproductor-raíz: en TV nunca se apila un segundo `player/{id}` (cada
+ * PlayerViewModel tendría su propio ExoPlayer y sonarían dos pistas).
+ */
+const val PENDING_TV_CHANNEL_KEY = "tv_pending_channel"
+
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun TvPlayerScreen(
     onExit: () -> Unit,
+    onBrowse: () -> Unit,
+    savedStateHandle: SavedStateHandle? = null,
     viewModel: PlayerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -117,6 +127,18 @@ fun TvPlayerScreen(
     var osdDigits by remember { mutableStateOf("") }
     var menuDialog by remember { mutableStateOf<TvMenuDialog?>(null) }
     var lastInteractionAt by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    // Canal elegido en el catálogo: llega por savedStateHandle al volver a
+    // este destino y se consume una sola vez (se borra para no releerlo).
+    LaunchedEffect(savedStateHandle) {
+        savedStateHandle?.getStateFlow(PENDING_TV_CHANNEL_KEY, -1L)?.collect { id ->
+            if (id > 0L) {
+                viewModel.playChannel(id)
+                savedStateHandle.remove<Long>(PENDING_TV_CHANNEL_KEY)
+                overlay = TvOverlay.INFO
+            }
+        }
+    }
 
     val activity = LocalContext.current.findActivity()
 
@@ -402,6 +424,7 @@ fun TvPlayerScreen(
                 isFavorite = state.channel?.isFavorite == true,
                 onOpenRail = { handleAction(TvAction.OpenRail) },
                 onOpenGuide = { handleAction(TvAction.OpenGuide) },
+                onBrowse = onBrowse,
                 onToggleFavorite = {
                     viewModel.toggleFavorite()
                     overlay = TvOverlay.NONE

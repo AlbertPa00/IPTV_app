@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.Icon
@@ -50,6 +51,7 @@ fun TvMenuOverlay(
     isFavorite: Boolean,
     onOpenRail: () -> Unit,
     onOpenGuide: () -> Unit,
+    onBrowse: () -> Unit,
     onToggleFavorite: () -> Unit,
     onOpenTracks: () -> Unit,
     onOpenSleepTimer: () -> Unit,
@@ -84,6 +86,11 @@ fun TvMenuOverlay(
                 icon = Icons.Filled.DateRange,
                 label = stringResource(R.string.player_guide_title),
                 onClick = onOpenGuide,
+            )
+            TvMenuItem(
+                icon = Icons.Filled.Movie,
+                label = stringResource(R.string.player_browse_catalog),
+                onClick = onBrowse,
             )
             TvMenuItem(
                 icon = Icons.Filled.Star,

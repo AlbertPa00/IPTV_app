@@ -10,6 +10,7 @@
     <string name="player_previous_channel">Previous channel</string>
     <string name="player_next_channel">Next channel</string>
     <string name="player_channel_list">Channel list</string>
+    <string name="player_browse_catalog">Browse catalog</string>
     <string name="player_pip">Floating window</string>
     <string name="player_live">LIVE</string>
     <string name="player_on_demand">ON DEMAND</string>
