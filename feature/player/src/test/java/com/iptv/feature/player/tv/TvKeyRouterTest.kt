@@ -48,6 +48,25 @@ class TvKeyRouterTest {
     }
 
     @Test
+    fun `last channel key recalls previous in any overlay`() {
+        TvOverlay.entries.forEach { overlay ->
+            assertEquals(
+                "overlay=$overlay",
+                TvAction.ZapPrevious,
+                perform(routeTvKey(down(TvKeys.LAST_CHANNEL), ctx(overlay = overlay))),
+            )
+        }
+    }
+
+    @Test
+    fun `last channel is ignored without channel list`() {
+        assertEquals(
+            TvKeyResult.Ignore,
+            routeTvKey(down(TvKeys.LAST_CHANNEL), ctx(hasChannelList = false)),
+        )
+    }
+
+    @Test
     fun `left opens rail and right opens info`() {
         assertEquals(TvAction.OpenRail, perform(routeTvKey(down(TvKeys.DPAD_LEFT), ctx())))
         assertEquals(TvAction.OpenInfo, perform(routeTvKey(down(TvKeys.DPAD_RIGHT), ctx())))

@@ -190,6 +190,10 @@ fun TvPlayerScreen(
                 viewModel.playAdjacent(action.delta)
                 overlay = TvOverlay.INFO
             }
+            TvAction.ZapPrevious -> {
+                viewModel.zapToPrevious()
+                overlay = TvOverlay.INFO
+            }
             is TvAction.Digit -> {
                 osdDigits = (osdDigits + action.n).take(4)
                 overlay = TvOverlay.NUMBER_OSD

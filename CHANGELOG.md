@@ -30,6 +30,8 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 - Las pantallas de catálogo muestran borde y escala al enfocar con el
   mando y ofrecen un botón de actualizar en la cabecera (en TV no existe
   el gesto de arrastrar para refrescar).
+- La tecla "último canal" del mando (LAST_CHANNEL/RECALL) alterna con el
+  canal anterior; el zap ya actualiza el canal guardado del arranque.
 
 ### Corregido
 - Canales que no llegaban a emitir al Chromecast en cuentas con límite de

@@ -36,6 +36,7 @@ object TvKeys {
     const val CHANNEL_UP = 166
     const val CHANNEL_DOWN = 167
     const val GUIDE = 172
+    const val LAST_CHANNEL = 229
 }
 
 /** Overlay visible sobre el vídeo permanente. Uno sólo a la vez. */
@@ -75,6 +76,9 @@ sealed interface TvAction {
     data class ZapBy(val delta: Int) : TvAction
     data class Digit(val n: Int) : TvAction
     data object ConfirmDigits : TvAction
+
+    /** "Recall": vuelve al canal anterior (tecla LAST_CHANNEL/RETURN). */
+    data object ZapPrevious : TvAction
 
     /** Salir de la app/pantalla: lo decide el nivel de navegación. */
     data object Back : TvAction
@@ -133,6 +137,13 @@ private fun routeTvKeyDown(key: TvKey, ctx: TvInputContext): TvKeyResult {
 
         TvKeys.CHANNEL_UP -> zapOrIgnore(ctx, +1)
         TvKeys.CHANNEL_DOWN -> zapOrIgnore(ctx, -1)
+        // Como el rocker de canal: actúa con cualquier overlay abierto.
+        TvKeys.LAST_CHANNEL ->
+            if (ctx.hasChannelList) {
+                TvKeyResult.Perform(TvAction.ZapPrevious)
+            } else {
+                TvKeyResult.Ignore
+            }
 
         TvKeys.INFO -> TvKeyResult.Perform(TvAction.OpenInfo)
         // La tecla GUIDE funciona como conmutador del panel EPG.

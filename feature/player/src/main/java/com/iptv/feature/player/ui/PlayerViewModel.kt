@@ -115,6 +115,9 @@ class PlayerViewModel @Inject constructor(
     private var channelId: Long = savedStateHandle.get<Long>("channelId")
         ?: error("channelId es obligatorio en la ruta del reproductor")
 
+    /** Canal anterior para el "recall" (tecla LAST_CHANNEL del mando). */
+    private var previousChannelId: Long? = null
+
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
@@ -758,9 +761,15 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch { switchChannel(nextId) }
     }
 
+    /** "Recall" del mando: alterna con el canal anterior, si lo hay. */
+    fun zapToPrevious() {
+        previousChannelId?.let(::playChannel)
+    }
+
     private suspend fun switchChannel(id: Long) {
         val channel = channelDao.findById(id)?.takeUnless { channelDao.isInLockedCategory(id) }
             ?: return
+        previousChannelId = channelId
         channelId = id
         downloadChannelId.value = id
         mimeRetried = false
@@ -771,6 +780,10 @@ class PlayerViewModel @Inject constructor(
         stopReconnect()
         reconnectAttempts = 0
         val isLive = channel.kind == Kinds.LIVE
+        if (isLive) {
+            // El zap también actualiza el "último canal" del arranque de TV.
+            prefs.setLastLiveChannelId(channel.id)
+        }
         _uiState.update {
             it.copy(
                 channel = channel,
