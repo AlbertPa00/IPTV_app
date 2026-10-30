@@ -1,4 +1,4 @@
-package com.iptv.feature.player.cast
+package com.iptv.feature.cast
 
 import androidx.media3.common.MimeTypes
 import com.google.android.gms.cast.MediaStatus

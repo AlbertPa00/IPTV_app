@@ -1,4 +1,4 @@
-package com.iptv.feature.player.cast
+package com.iptv.feature.cast
 
 import android.util.Log
 import fi.iki.elonen.NanoHTTPD
@@ -25,11 +25,12 @@ class LiveTsHlsSession(
     private val targetUrl: String,
     private val userAgent: String,
     private val referrer: String?,
+    baseClient: OkHttpClient,
 ) : LiveHlsSource {
 
     data class Segment(val seq: Long, val bytes: ByteArray, val durationSec: Double)
 
-    private val client = OkHttpClient.Builder()
+    private val client = baseClient.newBuilder()
         .connectTimeout(15, TimeUnit.SECONDS)
         // A live stream stalls == dead stream; 30 s without a single byte
         // is treated as failure instead of hanging forever.

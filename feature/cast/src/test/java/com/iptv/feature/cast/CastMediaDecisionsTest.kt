@@ -1,10 +1,10 @@
-package com.iptv.feature.player
+package com.iptv.feature.cast
 
 import com.google.android.gms.cast.MediaStatus
-import com.iptv.feature.player.cast.CastMediaDecisions
-import com.iptv.feature.player.cast.CastMediaDecisions.DirectCastCompatibility
-import com.iptv.feature.player.cast.CastStreamProber
-import com.iptv.feature.player.cast.LiveTsHlsSession
+import com.iptv.feature.cast.CastMediaDecisions
+import com.iptv.feature.cast.CastMediaDecisions.DirectCastCompatibility
+import com.iptv.core.network.StreamProber
+import com.iptv.feature.cast.LiveTsHlsSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -51,22 +51,22 @@ class CastMediaDecisionsTest {
     fun `payload sniffing detects real content regardless of labels`() {
         val playlist = "#EXTM3U\n#EXT-X-TARGETDURATION:10\nseg1.ts\n".toByteArray()
         assertEquals(
-            CastStreamProber.Kind.HLS,
-            CastStreamProber.sniffPayload(playlist, playlist.size),
+            StreamProber.Kind.HLS,
+            StreamProber.sniffPayload(playlist, playlist.size),
         )
         // MPEG-TS packet: sync byte 0x47 then arbitrary payload.
         val ts = ByteArray(512).also { it[0] = 0x47 }
         assertEquals(
-            CastStreamProber.Kind.TS,
-            CastStreamProber.sniffPayload(ts, ts.size),
+            StreamProber.Kind.TS,
+            StreamProber.sniffPayload(ts, ts.size),
         )
         // MP4: ....ftyp
         val mp4 = "....ftypisom....".toByteArray()
         assertEquals(
-            CastStreamProber.Kind.MP4,
-            CastStreamProber.sniffPayload(mp4, mp4.size),
+            StreamProber.Kind.MP4,
+            StreamProber.sniffPayload(mp4, mp4.size),
         )
-        assertEquals(CastStreamProber.Kind.UNKNOWN, CastStreamProber.sniffPayload(ByteArray(0), 0))
+        assertEquals(StreamProber.Kind.UNKNOWN, StreamProber.sniffPayload(ByteArray(0), 0))
     }
 
     @Test
@@ -117,6 +117,6 @@ class CastMediaDecisionsTest {
         val loader = javaClass.classLoader
         assertNotNull(Class.forName("androidx.media3.cast.CastPlayer", false, loader))
         assertNotNull(Class.forName("com.google.android.gms.cast.framework.CastContext", false, loader))
-        assertNotNull(Class.forName("com.iptv.feature.player.cast.IptvCastOptionsProvider", false, loader))
+        assertNotNull(Class.forName("com.iptv.feature.cast.IptvCastOptionsProvider", false, loader))
     }
 }

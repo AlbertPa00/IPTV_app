@@ -1,10 +1,11 @@
-package com.iptv.feature.player.cast
+package com.iptv.feature.cast
 
 import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.net.InetAddress
+import okhttp3.OkHttpClient
 
 /**
  * App-scoped owner of the [CastProxyServer]. The proxy must outlive the
@@ -18,18 +19,19 @@ object CastProxyRuntime {
 
     /** Extras the foreground service uses for its media notification. */
     @Volatile var channelTitle: String? = null
-    @Volatile var mediaSession: androidx.media3.session.MediaSession? = null
+    @Volatile var sessionToken: android.media.session.MediaSession.Token? = null
     @Volatile var onZap: ((Int) -> Unit)? = null
 
     fun clearPlaybackExtras() {
         channelTitle = null
-        mediaSession = null
+        sessionToken = null
         onZap = null
     }
 
     @Synchronized
     fun ensureStarted(
         context: Context,
+        baseClient: OkHttpClient,
         userAgent: String,
         referrer: String?,
         remoteAddress: InetAddress?,
@@ -41,6 +43,7 @@ object CastProxyRuntime {
         val created = CastProxyServer(
             userAgent, referrer, host,
             java.io.File(context.cacheDir, "casthls"),
+            baseClient,
         )
         return try {
             created.start()

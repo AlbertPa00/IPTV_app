@@ -20,6 +20,8 @@ kotlin {
 
 dependencies {
     api(libs.kotlinx.coroutines.android)
+    // Contratos tipo DownloadController/CastController exponen tipos media3.
+    api(libs.media3.common)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

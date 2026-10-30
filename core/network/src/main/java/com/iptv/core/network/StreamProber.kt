@@ -1,4 +1,4 @@
-package com.iptv.feature.player.cast
+package com.iptv.core.network
 
 import android.util.Log
 import okhttp3.OkHttpClient
@@ -12,34 +12,69 @@ import java.util.concurrent.TimeUnit
  * Probes the first bytes of a stream to learn what the server actually
  * serves. IPTV endpoints routinely lie: `.m3u8` URLs that return raw
  * MPEG-TS when the panel has HLS output disabled, extensionless URLs that
- * serve TS, `application/octet-stream` Content-Types, etc. Declaring the
- * wrong type to the Cast receiver is fatal — the URL's extension and the
- * Content-Type header are only hints; the payload prefix is the truth.
+ * serve TS, `application/octet-stream` Content-Types, etc. The URL's
+ * extension and the Content-Type header are only hints; the payload
+ * prefix is the truth.
  */
-object CastStreamProber {
+object StreamProber {
 
-    enum class Kind { HLS, TS, MP4, DASH, UNKNOWN }
+    /** MIME declarable a un player; null cuando el payload no identifica nada.
+     *  (strings espejo de androidx.media3.common.MimeTypes; network no
+     *  depende de media3). */
+    enum class Kind(val mimeType: String?) {
+        HLS("application/x-mpegURL"),
+        TS("video/mp2t"),
+        MP4("video/mp4"),
+        DASH("application/dash+xml"),
+        UNKNOWN(null),
+    }
 
     private const val SNIFF_BYTES = 512
     private const val TS_SYNC: Byte = 0x47
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build()
+    /**
+     * Resultados por (url, UA, referer): re-sondear la misma URL repetiría la
+     * petición en vano (zapping Cast, reintentos locales). Vive en el objeto,
+     * es decir en el proceso; cada entrada pesa ~100 bytes por URL.
+     */
+    private val cache = java.util.concurrent.ConcurrentHashMap<Triple<String, String, String>, Kind>()
 
     /**
      * Fetches the first bytes of [url] and sniffs the payload.
      * Never throws; returns [Kind.UNKNOWN] on any failure.
      */
-    fun probe(url: String, userAgent: String, referrer: String?): Kind = runCatching {
+    fun probe(client: OkHttpClient, url: String, userAgent: String, referrer: String?): Kind {
+        val key = Triple(url, userAgent, referrer.orEmpty())
+        return cache[key] ?: doProbe(client, url, userAgent, referrer).also { kind ->
+            // UNKNOWN suele ser fallo transitorio (timeout, red caída): no se
+            // cachea para que el próximo intento sondee de verdad. Techo: una
+            // lista de 50k canales no puede inflar el mapa sin fin.
+            if (kind != Kind.UNKNOWN) {
+                if (cache.size >= MAX_CACHE) cache.clear()
+                cache[key] = kind
+            }
+        }
+    }
+
+    private fun doProbe(
+        client: OkHttpClient,
+        url: String,
+        userAgent: String,
+        referrer: String?,
+    ): Kind = runCatching {
         val request = Request.Builder().url(url)
             .header("User-Agent", userAgent)
             .header("Range", "bytes=0-4095")
             .apply { referrer?.takeIf { it.isNotBlank() }?.let { header("Referer", it) } }
             .build()
-        client.newCall(request).execute().use { response ->
+        // Timeouts cortos propios del sondeo (fail fast ante paneles
+        // caídos) compartiendo el pool del cliente de la app.
+        client.newBuilder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
+            .newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 Log.w(TAG, "Probe HTTP ${response.code} for ${redactUrl(url)}")
                 return@use Kind.UNKNOWN
@@ -102,5 +137,6 @@ object CastStreamProber {
         }
     }
 
-    private const val TAG = "CastStreamProber"
+    private const val TAG = "StreamProber"
+    private const val MAX_CACHE = 512
 }

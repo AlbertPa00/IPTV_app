@@ -85,6 +85,7 @@ import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
 import com.iptv.core.common.text.formatBytes
 import com.iptv.core.designsystem.components.IptvAsyncImage
+import com.iptv.core.storage.entity.CategoryEntity
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.DownloadEntity
 import com.iptv.core.storage.entity.DownloadStatus
@@ -103,7 +104,7 @@ internal fun CatalogHeader(
     title: String,
     subtitle: String,
     query: String,
-    searchHint: Int,
+    searchHint: String,
     onQueryChange: (String) -> Unit,
 ) {
     // En horizontal la cabecera apilada ocupaba casi media pantalla: pasa a
@@ -173,7 +174,7 @@ internal fun CatalogHeader(
 @Composable
 private fun CatalogSearchField(
     query: String,
-    searchHint: Int,
+    searchHint: String,
     onQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -181,7 +182,7 @@ private fun CatalogSearchField(
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
-        placeholder = { Text(stringResource(searchHint)) },
+        placeholder = { Text(searchHint) },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
         trailingIcon = {
             if (query.isNotEmpty()) {
@@ -939,6 +940,77 @@ internal fun LanguagePickerDialog(
                             onDismiss()
                         },
                     )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.catalog_close))
+            }
+        },
+    )
+}
+
+/**
+ * Listado completo de categorías con filtro en memoria: alternativa al rail
+ * de chips cuando el proveedor trae más categorías de las que caben en un
+ * scroll horizontal cómodo. La selección marca con ✓ la activa.
+ */
+@Composable
+internal fun CategoryPickerDialog(
+    categories: List<CategoryEntity>,
+    selected: Long?,
+    onSelect: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var filter by remember { mutableStateOf("") }
+    val clean = filter.trim()
+    val shown = if (clean.isEmpty()) {
+        categories
+    } else {
+        categories.filter { it.name.contains(clean, ignoreCase = true) }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.catalog_all_categories)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = filter,
+                    onValueChange = { filter = it },
+                    placeholder = { Text(stringResource(R.string.catalog_search_categories)) },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (filter.isNotEmpty()) {
+                            IconButton(onClick = { filter = "" }) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = stringResource(R.string.catalog_clear_search),
+                                    tint = MutedText,
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                LazyColumn(Modifier.heightIn(max = 380.dp).padding(top = 8.dp)) {
+                    items(shown, key = { it.id }) { category ->
+                        ListItem(
+                            headlineContent = { Text(category.name, maxLines = 1) },
+                            trailingContent = {
+                                if (selected == category.id) {
+                                    Icon(Icons.Filled.Check, contentDescription = null, tint = Carmine)
+                                }
+                            },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.clickable {
+                                onSelect(category.id)
+                                onDismiss()
+                            },
+                        )
+                    }
                 }
             }
         },

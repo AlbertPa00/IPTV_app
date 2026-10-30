@@ -133,7 +133,7 @@ fun VodCatalogScreen(
             title = stringResource(titleFor(kind)),
             subtitle = stringResource(R.string.catalog_browse_subtitle),
             query = state.query,
-            searchHint = searchHintFor(kind),
+            searchHint = stringResource(searchHintFor(kind)),
             onQueryChange = viewModel::onQueryChange,
         )
         PullToRefreshBox(

@@ -8,9 +8,11 @@ import com.iptv.core.common.download.DownloadController
 import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.common.sync.CatalogSyncScheduler
 import com.iptv.core.storage.dao.CategoryDao
+import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.DownloadDao
 import com.iptv.core.storage.dao.SourceDao
 import com.iptv.core.storage.entity.CategoryEntity
+import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.DownloadEntity
 import com.iptv.core.storage.entity.DownloadStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -47,6 +49,7 @@ class SettingsViewModel @Inject constructor(
     private val scheduler: CatalogSyncScheduler,
     sourceDao: SourceDao,
     private val categoryDao: CategoryDao,
+    private val channelDao: ChannelDao,
     private val downloadDao: DownloadDao,
     private val downloadController: DownloadController,
 ) : ViewModel() {
@@ -63,6 +66,7 @@ class SettingsViewModel @Inject constructor(
         val bufferProfile: String = AppPreferences.BUFFER_AUTO,
         val liveReconnectContinuous: Boolean = false,
         val categories: List<CategoryEntity> = emptyList(),
+        val hiddenChannels: List<ChannelEntity> = emptyList(),
         val pinPrompt: PinPrompt? = null,
         val pinError: Boolean = false,
         val managingCategories: Boolean = false,
@@ -79,6 +83,14 @@ class SettingsViewModel @Inject constructor(
         .flatMapLatest { source ->
             if (source == null) flowOf(emptyList())
             else categoryDao.observeAllBySource(source.id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyList())
+
+    /** Canales ocultados por el usuario, para recuperarlos desde Ajustes. */
+    private val hiddenChannels = sourceDao.observeActive()
+        .flatMapLatest { source ->
+            if (source == null) flowOf(emptyList())
+            else channelDao.observeHidden(source.id)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, Long.MAX_VALUE), emptyList())
 
@@ -111,13 +123,17 @@ class SettingsViewModel @Inject constructor(
         ::PlaybackPrefs,
     )
 
+    // Categorías + canales ocultos viajan juntos: las APIs tipadas de
+    // combine llegan a 5 flows y el diálogo de gestión los usa a la vez.
+    private val managedLists = combine(categories, hiddenChannels, ::Pair)
+
     val uiState: StateFlow<UiState> = combine(
         syncPrefs,
         playbackPrefs,
         prefs.hasPin,
-        categories,
+        managedLists,
         combine(pinPrompt, pinError, managingCategories) { p, e, m -> Triple(p, e, m) },
-    ) { sync, playback, hasPin, cats, (prompt, error, managing) ->
+    ) { sync, playback, hasPin, (cats, hidden), (prompt, error, managing) ->
         UiState(
             autoRefresh = sync.autoRefresh,
             wifiOnly = sync.wifiOnly,
@@ -127,6 +143,7 @@ class SettingsViewModel @Inject constructor(
             bufferProfile = playback.bufferProfile,
             liveReconnectContinuous = playback.liveReconnectContinuous,
             categories = cats,
+            hiddenChannels = hidden,
             pinPrompt = prompt,
             pinError = error,
             managingCategories = managing,
@@ -317,7 +334,10 @@ class SettingsViewModel @Inject constructor(
     private fun autoLockAdultCategories() {
         viewModelScope.launch {
             categories.value
-                .filter { ADULT_CATEGORY_REGEX.containsMatchIn(it.name) }
+                .filter {
+                    ADULT_CATEGORY_REGEX.containsMatchIn(it.providerName) ||
+                        ADULT_CATEGORY_REGEX.containsMatchIn(it.name)
+                }
                 .forEach { categoryDao.setLocked(it.id, true) }
         }
     }
@@ -330,21 +350,32 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { categoryDao.setHidden(categoryId, hidden) }
     }
 
+    /** Renombra la copia del usuario; la sync la conserva desde `providerName`. */
+    fun renameCategory(categoryId: Long, newName: String) {
+        val clean = newName.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch { categoryDao.rename(categoryId, clean) }
+    }
+
+    fun restoreCategoryName(categoryId: Long) {
+        viewModelScope.launch { categoryDao.restoreName(categoryId) }
+    }
+
+    /** Recupera un canal ocultado desde la lista de canales (long-press). */
+    fun unhideChannel(channelId: Long) {
+        viewModelScope.launch { channelDao.setHidden(channelId, false) }
+    }
+
     /**
-     * Mueve la categoría una posición dentro de su grupo (LIVE/VOD/SERIES).
-     * Reescribe el sortOrder del grupo completo según el orden visible.
+     * Persiste el orden tras un drag & drop: reescribe `sortOrder` dentro de
+     * cada grupo (LIVE/VOD/SERIES) según el orden visible en el diálogo.
      */
-    fun moveCategory(categoryId: Long, up: Boolean) {
-        val list = categories.value
-        val index = list.indexOfFirst { it.id == categoryId }
-        if (index < 0) return
-        val kind = list[index].kind
-        val group = list.filter { it.kind == kind }.toMutableList()
-        val from = group.indexOfFirst { it.id == categoryId }
-        val to = if (up) from - 1 else from + 1
-        if (to !in group.indices) return
-        group[from] = group[to].also { group[to] = group[from] }
-        val reordered = group.mapIndexed { i, category -> category.copy(sortOrder = i) }
+    fun persistCategoryOrder(orderedIds: List<Long>) {
+        val byId = categories.value.associateBy { it.id }
+        val reordered = orderedIds.mapNotNull(byId::get)
+            .groupBy(CategoryEntity::kind).values
+            .flatMap { group -> group.mapIndexed { i, c -> c.copy(sortOrder = i) } }
+        if (reordered.isEmpty()) return
         viewModelScope.launch { categoryDao.updateAll(reordered) }
     }
 

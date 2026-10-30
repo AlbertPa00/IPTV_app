@@ -16,6 +16,8 @@
     <string name="catalog_play">Reproducir</string>
     <string name="catalog_next_programme">A continuación · %1$s  %2$s</string>
     <string name="catalog_search_tv">Buscar canal…</string>
+    <string name="catalog_search_in">Buscar en %1$s…</string>
+    <string name="catalog_search_categories">Buscar categoría…</string>
     <string name="catalog_search_movies">Buscar película…</string>
     <string name="catalog_search_series">Buscar serie…</string>
     <string name="catalog_empty_tv">No hay canales de TV en esta fuente</string>
@@ -94,4 +96,17 @@
     <string name="download_state_failed">Error al descargar — toca para reintentar</string>
     <string name="download_state_progress">Descargando · %1$d%% · %2$s de %3$s</string>
     <string name="download_state_progress_unknown">Descargando · %1$s</string>
+    <string name="catalog_programmes_header">En la guía</string>
+    <string name="catalog_programme_now">Ahora</string>
+    <string name="catalog_programme_today">Hoy · %1$s</string>
+    <string name="catalog_programme_tomorrow">Mañana · %1$s</string>
+    <string name="catalog_programme_channels">en %1$d canales</string>
+    <string name="catalog_channel_hide">Ocultar canal</string>
+    <string name="catalog_channel_rename">Renombrar</string>
+    <string name="catalog_channel_restore_name">Restaurar nombre original</string>
+    <string name="catalog_channel_actions">Acciones del canal</string>
+    <string name="catalog_rename_title">Renombrar canal</string>
+    <string name="catalog_rename_field">Nombre</string>
+    <string name="catalog_save">Guardar</string>
+    <string name="catalog_cancel">Cancelar</string>
 </resources>

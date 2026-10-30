@@ -1,4 +1,4 @@
-package com.iptv.feature.player.cast
+package com.iptv.feature.cast
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -19,7 +19,7 @@ import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
-import com.iptv.feature.player.R
+import com.iptv.feature.cast.R
 
 /**
  * Foreground service that keeps the phone's Wi-Fi radio and CPU awake while
@@ -144,19 +144,19 @@ class CastProxyService : Service() {
         if (canZap) {
             builder.addAction(
                 android.R.drawable.ic_media_previous,
-                getString(R.string.player_previous_channel),
+                getString(R.string.cast_service_previous_channel),
                 actionIntent(ACTION_ZAP_PREV),
             )
         }
         builder.addAction(
             if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
-            getString(if (isPlaying) R.string.player_pause else R.string.player_play),
+            getString(if (isPlaying) R.string.cast_service_pause else R.string.cast_service_play),
             actionIntent(ACTION_TOGGLE),
         )
         if (canZap) {
             builder.addAction(
                 android.R.drawable.ic_media_next,
-                getString(R.string.player_next_channel),
+                getString(R.string.cast_service_next_channel),
                 actionIntent(ACTION_ZAP_NEXT),
             )
         }
@@ -171,7 +171,7 @@ class CastProxyService : Service() {
         // removed sessionCompatToken; the compat MediaStyle still needs a
         // MediaSessionCompat.Token, so we wrap the platform token.
         runCatching {
-            CastProxyRuntime.mediaSession?.platformToken?.let { token ->
+            CastProxyRuntime.sessionToken?.let { token ->
                 builder.setStyle(
                     androidx.media.app.NotificationCompat.MediaStyle()
                         .setMediaSession(

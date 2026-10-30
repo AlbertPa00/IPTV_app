@@ -1,5 +1,6 @@
-package com.iptv.feature.player.cast
+package com.iptv.feature.cast
 
+import android.content.Context
 import android.util.Log
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.FFmpegSession
@@ -139,8 +140,15 @@ class FfmpegHlsSession(
     private fun StringBuilder.appendArg(arg: String): StringBuilder =
         append('"').append(arg.replace("\"", "\\\"")).append('"')
 
-    private companion object {
-        const val TAG = "FfmpegHls"
-        const val PLAYLIST_NAME = "index.m3u8"
+    companion object {
+        private const val TAG = "FfmpegHls"
+        private const val PLAYLIST_NAME = "index.m3u8"
+
+        /**
+         * ffmpeg-kit solo publica ABIs de 64 bits: en dispositivos 32-bit el
+         * .so no se instala y ejecutar ffmpeg fallaría con UnsatisfiedLinkError.
+         */
+        fun isNativeAvailable(context: Context): Boolean =
+            File(context.applicationInfo.nativeLibraryDir, "libffmpegkit.so").exists()
     }
 }

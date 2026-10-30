@@ -1,7 +1,8 @@
-package com.iptv.feature.player.cast
+package com.iptv.feature.cast
 
 import android.util.Log
 import fi.iki.elonen.NanoHTTPD
+import com.iptv.core.network.StreamProber
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayInputStream
@@ -35,6 +36,7 @@ class CastProxyServer(
     private val referrer: String?,
     private val advertisedHost: String,
     private val workDir: java.io.File,
+    private val baseClient: OkHttpClient,
 ) {
     private var server: ProxyServer? = null
     private var port: Int = 0
@@ -50,7 +52,7 @@ class CastProxyServer(
     }
 
     fun start(): Int {
-        val s = ProxyServer(0, userAgent, referrer, advertisedHost, workDir, secret)
+        val s = ProxyServer(0, userAgent, referrer, advertisedHost, workDir, secret, baseClient)
         s.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
         server = s
         port = s.listeningPort
@@ -142,11 +144,13 @@ private class ProxyServer(
     private val advertisedHost: String,
     private val workDir: java.io.File,
     private val secret: String,
+    private val baseClient: OkHttpClient,
 ) : NanoHTTPD(port) {
 
     // Streaming client: infinite read timeout so live segments and VOD
-    // downloads are never cut off mid-stream.
-    private val client = OkHttpClient.Builder()
+    // downloads are never cut off mid-stream. newBuilder() comparte el pool
+    // de conexiones del cliente de la app (menos TCP+TLS por canal).
+    private val client = baseClient.newBuilder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.SECONDS)
         .followRedirects(true)
@@ -155,7 +159,7 @@ private class ProxyServer(
     // Manifest client: bounded read timeout so a live HLS playlist that
     // keeps the connection open without closing it doesn't hang the proxy
     // forever. Manifests are small (< 256 KB), so 10 s is plenty.
-    private val manifestClient = OkHttpClient.Builder()
+    private val manifestClient = baseClient.newBuilder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .followRedirects(true)
@@ -247,7 +251,7 @@ private class ProxyServer(
                 workDir = java.io.File(workDir, "hls_" + token.hashCode().toString(16)),
                 transcodeAudio = mode == 't',
             )
-            else -> LiveTsHlsSession(targetUrl, userAgent, referrer)
+            else -> LiveTsHlsSession(targetUrl, userAgent, referrer, baseClient)
         }
 
     private fun serveHlsSegment(path: String): Response {
@@ -314,8 +318,8 @@ private class ProxyServer(
             val headLen = runCatching { buffered.read(head) }.getOrDefault(-1)
             buffered.reset()
 
-            when (CastStreamProber.sniffPayload(head, maxOf(headLen, 0))) {
-                CastStreamProber.Kind.HLS -> {
+            when (StreamProber.sniffPayload(head, maxOf(headLen, 0))) {
+                StreamProber.Kind.HLS -> {
                     val manifestContent = readBoundedString(buffered, MAX_MANIFEST_BYTES)
                     if (manifestContent == null) {
                         response.close()
@@ -334,16 +338,16 @@ private class ProxyServer(
                     }
                 }
 
-                CastStreamProber.Kind.TS ->
+                StreamProber.Kind.TS ->
                     newChunkedResponse(status, "video/mp2t", buffered)
 
-                CastStreamProber.Kind.MP4 ->
+                StreamProber.Kind.MP4 ->
                     newChunkedResponse(status, "video/mp4", buffered)
 
-                CastStreamProber.Kind.DASH ->
+                StreamProber.Kind.DASH ->
                     newChunkedResponse(status, "application/dash+xml", buffered)
 
-                CastStreamProber.Kind.UNKNOWN -> {
+                StreamProber.Kind.UNKNOWN -> {
                     // Mislabeled or empty manifest: pass bytes through as-is.
                     newChunkedResponse(status, contentType, buffered)
                 }

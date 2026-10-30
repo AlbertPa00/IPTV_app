@@ -134,7 +134,7 @@ import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.DownloadEntity
 import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.feature.player.R
-import com.iptv.feature.player.cast.CastRouteButton
+import com.iptv.feature.player.ui.CastRouteButton
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

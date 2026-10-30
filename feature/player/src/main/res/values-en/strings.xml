@@ -31,10 +31,6 @@
     <string name="player_error_generic">The channel could not be played</string>
     <string name="player_error_channel_missing">This channel no longer exists in your list</string>
     <string name="player_error_timeout">The channel is not responding; it may be down or overloaded</string>
-    <string name="cast_service_notification_title">Casting to Chromecast</string>
-    <string name="cast_service_channel_name">Chromecast</string>
-    <string name="cast_service_stop">Stop casting</string>
-    <string name="cast_service_open">Open player</string>
     <string name="player_cast_volume">TV volume</string>
     <string name="player_cast_mute">Mute TV</string>
     <string name="player_cast_unmute">Unmute</string>

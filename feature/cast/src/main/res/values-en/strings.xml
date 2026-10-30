@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cast_service_notification_title">Casting to Chromecast</string>
+    <string name="cast_service_channel_name">Chromecast</string>
+    <string name="cast_service_stop">Stop casting</string>
+    <string name="cast_service_previous_channel">Previous channel</string>
+    <string name="cast_service_next_channel">Next channel</string>
+    <string name="cast_service_pause">Pause</string>
+    <string name="cast_service_play">Play</string>
+</resources>

@@ -1,8 +1,10 @@
 package com.iptv.feature.catalog.ui
 
 import android.content.res.Configuration
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,24 +21,35 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -67,6 +80,8 @@ import com.iptv.feature.catalog.R
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 /**
  * Sección TV en directo: lista de zapping con el programa en emisión y el
@@ -84,11 +99,15 @@ fun LiveTvScreen(
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val languages by viewModel.languages.collectAsStateWithLifecycle()
     val guideByChannel by viewModel.guideByChannel.collectAsStateWithLifecycle()
+    val programmeHits by viewModel.programmeResults.collectAsStateWithLifecycle()
     val favOverride = viewModel::favOverride
     val showQuickHint by viewModel.showQuickHint.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val content = viewModel.channels.collectAsLazyPagingItems()
+    val reorderScope by viewModel.reorderScope.collectAsStateWithLifecycle()
     var showLanguagePicker by remember { mutableStateOf(false) }
+    var showCategoryPicker by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<ChannelEntity?>(null) }
     // El pull-to-refresh también revalida el PagingSource: el indicador se
     // sostiene mientras dure ese refresh además del suelo del ViewModel.
     var pulledRefresh by remember { mutableStateOf(false) }
@@ -111,12 +130,22 @@ fun LiveTvScreen(
         }
     }
 
+    // El hint del buscador anuncia el ámbito activo: con una categoría o
+    // favoritos seleccionados el texto filtra sólo ese bucket.
+    val scopeName = when {
+        filters.favoritesOnly -> stringResource(R.string.catalog_favorites)
+        filters.categoryId != null -> categories.firstOrNull {
+            it.id == filters.categoryId
+        }?.name
+        else -> null
+    }
     Column(Modifier.fillMaxSize().background(CinemaBlack)) {
         CatalogHeader(
             title = stringResource(R.string.catalog_title_tv),
             subtitle = stringResource(R.string.catalog_live_subtitle),
             query = filters.query,
-            searchHint = R.string.catalog_search_tv,
+            searchHint = scopeName?.let { stringResource(R.string.catalog_search_in, it) }
+                ?: stringResource(R.string.catalog_search_tv),
             onQueryChange = viewModel::onQueryChange,
         )
         if (filters.query.isBlank()) {
@@ -132,6 +161,7 @@ fun LiveTvScreen(
                 onSelectAll = viewModel::selectAll,
                 onSelectCategory = viewModel::selectCategory,
                 onLanguageClick = { showLanguagePicker = true },
+                onAllCategoriesClick = { showCategoryPicker = true },
             )
         }
         if (showLanguagePicker) {
@@ -140,6 +170,16 @@ fun LiveTvScreen(
                 selected = filters.language,
                 onSelect = viewModel::selectLanguage,
                 onDismiss = { showLanguagePicker = false },
+            )
+        }
+        if (showCategoryPicker) {
+            CategoryPickerDialog(
+                categories = categories.filter {
+                    filters.language == null || it.language == filters.language
+                },
+                selected = filters.categoryId,
+                onSelect = viewModel::selectCategory,
+                onDismiss = { showCategoryPicker = false },
             )
         }
         PullToRefreshBox(
@@ -165,8 +205,28 @@ fun LiveTvScreen(
                     }
                 }
                 else -> ChannelList(
-                    content, guideByChannel, now, onChannelClick,
-                    viewModel::toggleFavorite, favOverride,
+                    content = content,
+                    guideByChannel = guideByChannel,
+                    programmeHits = programmeHits,
+                    now = now,
+                    onClick = onChannelClick,
+                    onToggleFavorite = viewModel::toggleFavorite,
+                    favOverride = favOverride,
+                    reorderItems = reorderScope,
+                    onReorder = viewModel::persistReorder,
+                    onRenameChannel = { channel -> renameTarget = channel },
+                    onRestoreName = viewModel::restoreChannelName,
+                    onHideChannel = viewModel::hideChannel,
+                )
+            }
+            renameTarget?.let { target ->
+                RenameChannelDialog(
+                    channel = target,
+                    onSubmit = { newName ->
+                        viewModel.renameChannel(target, newName)
+                        renameTarget = null
+                    },
+                    onDismiss = { renameTarget = null },
                 )
             }
             if (showQuickHint && content.itemCount > 0) {
@@ -197,6 +257,7 @@ private fun LiveFilterRail(
     onSelectAll: () -> Unit,
     onSelectCategory: (Long) -> Unit,
     onLanguageClick: () -> Unit,
+    onAllCategoriesClick: () -> Unit,
 ) {
     // En horizontal el rail compite con la lista por altura: padding justo.
     val railVPad =
@@ -236,6 +297,24 @@ private fun LiveFilterRail(
                 onClick = onSelectAll,
             )
         }
+        // Las listas Xtream traen cientos de grupos: acceso fijo al diálogo
+        // con búsqueda — al final del rail nadie lo encontraría sin scroll.
+        if (categories.size > CATEGORY_SEARCH_THRESHOLD) {
+            item(key = "allCategories") {
+                CategoryChip(
+                    label = stringResource(R.string.catalog_all_categories),
+                    selected = false,
+                    onClick = onAllCategoriesClick,
+                    leadingIcon = {
+                        Icon(
+                            Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
+                )
+            }
+        }
         items(categories, key = { it.id }) { category ->
             CategoryChip(
                 label = category.name,
@@ -246,35 +325,105 @@ private fun LiveFilterRail(
     }
 }
 
+private const val CATEGORY_SEARCH_THRESHOLD = 10
+
 @Composable
 private fun ChannelList(
     content: LazyPagingItems<ChannelEntity>,
     guideByChannel: Map<Long, GuideRow>,
+    programmeHits: List<LiveTvViewModel.ProgrammeHit>,
     now: Long,
     onClick: (Long) -> Unit,
     onToggleFavorite: (ChannelEntity) -> Unit,
     favOverride: (Long) -> Boolean?,
+    reorderItems: List<ChannelEntity>?,
+    onReorder: (List<Long>) -> Unit,
+    onRenameChannel: (ChannelEntity) -> Unit,
+    onRestoreName: (ChannelEntity) -> Unit,
+    onHideChannel: (ChannelEntity) -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
+    val lazyListState = rememberLazyListState()
+    // Copia local del ámbito mientras dura el drag; al soltar se persiste el
+    // orden y la emisión de Room vuelve a mandar con ese mismo orden.
+    val scopeItems = remember { mutableStateListOf<ChannelEntity>() }
+    val reorderable = reorderItems != null
+    // Los índices de onMove son del LazyColumn: la cabecera de programas desplaza.
+    val headerItems = if (programmeHits.isNotEmpty()) 1 else 0
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        scopeItems.add(to.index - headerItems, scopeItems.removeAt(from.index - headerItems))
+        haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+    }
+    LaunchedEffect(reorderItems, reorderableState.isAnyItemDragging) {
+        if (!reorderableState.isAnyItemDragging) {
+            scopeItems.clear()
+            scopeItems.addAll(reorderItems.orEmpty())
+        }
+    }
     LazyColumn(
+        state = lazyListState,
         verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        items(count = content.itemCount, key = content.itemKey { it.id }) { index ->
-            content[index]?.let { raw ->
-                // Estrella optimista: no esperar al refresh de Paging.
-                val channel = favOverride(raw.id)
-                    ?.let { raw.copy(isFavorite = it) } ?: raw
-                LiveChannelRow(
-                    channel = channel,
-                    guide = guideByChannel[channel.id],
+        // Sólo con búsqueda activa: "cuándo echan X" antes que los canales.
+        if (programmeHits.isNotEmpty()) {
+            item(key = "programme_hits") {
+                ProgrammeHitsSection(
+                    hits = programmeHits,
                     now = now,
-                    onClick = { onClick(channel.id) },
-                    onToggleFavorite = { onToggleFavorite(channel) },
+                    onHitClick = { hit -> hit.channelId?.let(onClick) },
                 )
             }
         }
-        item { PagingAppendState(content.loadState.append) { content.retry() } }
+        if (reorderable) {
+            items(scopeItems, key = { it.id }) { raw ->
+                val channel = favOverride(raw.id)
+                    ?.let { raw.copy(isFavorite = it) } ?: raw
+                ReorderableItem(reorderableState, key = raw.id) { isDragging ->
+                    LiveChannelRow(
+                        channel = channel,
+                        guide = guideByChannel[channel.id],
+                        now = now,
+                        reorderable = true,
+                        dragging = isDragging,
+                        dragModifier = Modifier.longPressDraggableHandle(
+                            onDragStarted = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                            onDragStopped = { onReorder(scopeItems.map { it.id }) },
+                        ),
+                        onClick = { onClick(channel.id) },
+                        onToggleFavorite = { onToggleFavorite(channel) },
+                        onRename = { onRenameChannel(channel) },
+                        onRestoreName = { onRestoreName(channel) },
+                        onHide = { onHideChannel(channel) },
+                    )
+                }
+            }
+        } else {
+            items(count = content.itemCount, key = content.itemKey { it.id }) { index ->
+                content[index]?.let { raw ->
+                    // Estrella optimista: no esperar al refresh de Paging.
+                    val channel = favOverride(raw.id)
+                        ?.let { raw.copy(isFavorite = it) } ?: raw
+                    LiveChannelRow(
+                        channel = channel,
+                        guide = guideByChannel[channel.id],
+                        now = now,
+                        reorderable = false,
+                        dragging = false,
+                        dragModifier = Modifier,
+                        onClick = { onClick(channel.id) },
+                        onToggleFavorite = { onToggleFavorite(channel) },
+                        onRename = { onRenameChannel(channel) },
+                        onRestoreName = { onRestoreName(channel) },
+                        onHide = { onHideChannel(channel) },
+                    )
+                }
+            }
+            item { PagingAppendState(content.loadState.append) { content.retry() } }
+        }
     }
 }
 
@@ -283,15 +432,37 @@ private fun LiveChannelRow(
     channel: ChannelEntity,
     guide: GuideRow?,
     now: Long,
+    reorderable: Boolean,
+    dragging: Boolean,
+    dragModifier: Modifier,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onRename: () -> Unit,
+    onRestoreName: () -> Unit,
+    onHide: () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Graphite),
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp).clickable(onClick = onClick),
-    ) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val elevation by animateDpAsState(if (dragging) 8.dp else 0.dp, label = "dragElevation")
+    Box {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Graphite),
+            shape = RoundedCornerShape(12.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = elevation),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp)
+                .then(dragModifier)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = if (reorderable) {
+                        null
+                    } else {
+                        {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuOpen = true
+                        }
+                    },
+                ),
+        ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -332,8 +503,159 @@ private fun LiveChannelRow(
                     tint = if (channel.isFavorite) Carmine else MutedText,
                 )
             }
+            // Con reorden por long-press el menú necesita ancla propia.
+            if (reorderable) {
+                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = stringResource(R.string.catalog_channel_actions),
+                        tint = MutedText,
+                    )
+                }
+            }
+        }
+        }
+        // Menú contextual: renombrar (la guía sigue casando por el nombre del
+        // proveedor) y ocultar el canal de toda la app. En favoritos/categoría
+        // se abre desde ⋮; fuera, con pulsación larga sobre la tarjeta.
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            fun dismissAnd(action: () -> Unit): () -> Unit = { menuOpen = false; action() }
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.catalog_channel_rename)) },
+                leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                onClick = dismissAnd(onRename),
+            )
+            if (channel.name != channel.providerName) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.catalog_channel_restore_name)) },
+                    leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                    onClick = dismissAnd(onRestoreName),
+                )
+            }
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.catalog_channel_hide)) },
+                leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
+                onClick = dismissAnd(onHide),
+            )
         }
     }
+}
+
+/** Resultados "cuándo lo echan": emisiones de la guía sobre la lista de canales. */
+@Composable
+private fun ProgrammeHitsSection(
+    hits: List<LiveTvViewModel.ProgrammeHit>,
+    now: Long,
+    onHitClick: (LiveTvViewModel.ProgrammeHit) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)) {
+        Text(
+            text = stringResource(R.string.catalog_programmes_header),
+            style = MaterialTheme.typography.labelLarge,
+            color = Carmine,
+        )
+        Spacer(Modifier.height(4.dp))
+        hits.forEach { hit ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Graphite)
+                    .clickable(enabled = hit.channelId != null) { onHitClick(hit) }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = hit.title,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = buildString {
+                            append(programmeTimeLabel(hit, now))
+                            hit.channelName?.let { append(" · ").append(it) }
+                            if (hit.channelCount > 1) {
+                                append(" · ").append(
+                                    stringResource(
+                                        R.string.catalog_programme_channels,
+                                        hit.channelCount,
+                                    ),
+                                )
+                            }
+                        },
+                        color = if (hit.startUtc <= now) Carmine else MutedText,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun programmeTimeLabel(hit: LiveTvViewModel.ProgrammeHit, now: Long): String {
+    if (hit.startUtc <= now) return stringResource(R.string.catalog_programme_now)
+    val start = Date(hit.startUtc)
+    val today = java.util.Calendar.getInstance().apply { time = Date(now) }
+    val airing = java.util.Calendar.getInstance().apply { time = start }
+    val sameDay = today.get(java.util.Calendar.YEAR) == airing.get(java.util.Calendar.YEAR) &&
+        today.get(java.util.Calendar.DAY_OF_YEAR) == airing.get(java.util.Calendar.DAY_OF_YEAR)
+    val tomorrow = (today.clone() as java.util.Calendar)
+        .apply { add(java.util.Calendar.DAY_OF_YEAR, 1) }
+    val isTomorrow = tomorrow.get(java.util.Calendar.YEAR) == airing.get(java.util.Calendar.YEAR) &&
+        tomorrow.get(java.util.Calendar.DAY_OF_YEAR) == airing.get(java.util.Calendar.DAY_OF_YEAR)
+    return when {
+        sameDay -> stringResource(
+            R.string.catalog_programme_today,
+            formatTime(hit.startUtc),
+        )
+        isTomorrow -> stringResource(
+            R.string.catalog_programme_tomorrow,
+            formatTime(hit.startUtc),
+        )
+        else -> DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+            .format(start)
+    }
+}
+
+@Composable
+private fun RenameChannelDialog(
+    channel: ChannelEntity,
+    onSubmit: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember(channel.id) { mutableStateOf(channel.name) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.catalog_rename_title)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                label = { Text(stringResource(R.string.catalog_rename_field)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSubmit(name) },
+                enabled = name.isNotBlank(),
+            ) {
+                Text(stringResource(R.string.catalog_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.catalog_cancel))
+            }
+        },
+    )
 }
 
 @Composable

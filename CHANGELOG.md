@@ -5,6 +5,53 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-30
+
+### Añadido
+- Búsqueda dentro de la guía: al buscar en TV en directo aparece una sección
+  "En la guía" con las emisiones en curso o futuras que coinciden con el
+  título, su canal y cuándo empiezan ("Ahora", "Hoy · 21:30", "Mañana…").
+  Si el programa se emite en varios canales se agrupa en una sola fila.
+- Personalización de canales (pulsación larga en la lista de TV): renombrar
+  (la guía sigue casando por el nombre del proveedor), ocultar el canal en
+  toda la app —reversible desde Ajustes— y reordenar por drag & drop dentro
+  de favoritos o de su categoría (el menú pasa a un botón ⋮ en esas vistas).
+- Renombrar y reordenar categorías por drag & drop desde la gestión de
+  categorías en Ajustes, con opción de restaurar el nombre original. Los
+  renombres, ocultaciones y órdenes manuales sobreviven a las
+  resincronizaciones del proveedor.
+- Búsqueda dentro del ámbito activo en TV en directo: con una categoría,
+  favoritos o idioma seleccionados, el buscador filtra sólo ese conjunto de
+  canales (el hint del campo indica el ámbito, p. ej. "Buscar en Deportes").
+- Chip "Todas las categorías ▾" al inicio del rail de TV (cuando hay más de
+  10): abre un listado con buscador para encontrar la categoría sin recorrer
+  el rail a ciegas.
+
+### Mejorado
+- El reproductor ahora admite streams DASH (.mpd) y RTSP (rtsp://), además de
+  HLS, MPEG-TS y MP4.
+- Menos consumo de batería al ver la tele: el audio estándar (AAC/MP3) vuelve
+  a decodificarse por hardware y FFmpeg queda como respaldo sólo cuando el
+  dispositivo no tiene códec nativo (AC3/EAC3/DTS; también cubre vídeo
+  MPEG-2 por software).
+- Zapping más rápido: el reproductor reutiliza la conexión de red al cambiar
+  entre canales del mismo proveedor.
+- Recuperación automática cuando el proveedor anuncia un formato distinto al
+  real (p. ej. vídeo TS servido en una URL .m3u8): el reproductor lo detecta
+  y reintenta una vez con el formato correcto en vez de mostrar error.
+- Las descargas de vídeo en formato HLS (.m3u8) fallan ahora con un motivo
+  claro en vez de guardar un fichero inservible que además seguía consumiendo
+  red al reproducirse. Al pulsar descargar se muestra un aviso explicando el
+  motivo, y la lista de descargas detalla la causa del error.
+- Emitir al televisor tarda menos al volver a un canal ya enviado: el
+  resultado del análisis del stream queda memorizado durante la sesión.
+- Corregido el envío a Chromecast de canales TS en directo en teléfonos de
+  32 bits, donde fallaba siempre (FFmpegKit sólo distribuye binarios de
+  64 bits): ahora recurre al cortador de paquetes en memoria.
+- Los canales que exigen cabeceras propias (User-Agent/Referer vía
+  #EXTVLCOPT) las aplican también al cambiar de canal y al emitir: antes el
+  zapping y el Cast reutilizaban las del primer canal abierto.
+
 ### Otras
 
 - Configurado `debugSymbolLevel=FULL` en release: los símbolos nativos se

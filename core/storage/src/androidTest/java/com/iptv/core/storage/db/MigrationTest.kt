@@ -136,12 +136,56 @@ class MigrationTest {
     }
 
     @Test
-    fun migrateAll_1to9() {
+    fun migrate10To11_addsUserColumnsAndProgrammeFts() {
+        helper.createDatabase(DB_NAME, 10).apply {
+            execSQL(
+                "INSERT INTO sources (id, type, name, isActive) VALUES (1, 'M3U_URL', 'S1', 1)",
+            )
+            execSQL(
+                "INSERT INTO categories (sourceId, externalId, kind, name, sortOrder, isLocked, hidden, language) " +
+                    "VALUES (1, 'g1', 'LIVE', 'TDT', 0, 0, 0, '')",
+            )
+            execSQL(
+                "INSERT INTO channels (sourceId, externalId, name, nameNorm, streamUrl, kind, sortOrder, isFavorite, language) " +
+                    "VALUES (1, 'u1', 'La 1', 'la 1', 'http://x', 'LIVE', 0, 1, '')",
+            )
+            execSQL(
+                "INSERT INTO programmes (sourceId, channelKey, channelNameNorm, title, startUtc, endUtc) " +
+                    "VALUES (1, 'la1', 'la 1', 'Telediario', 100, 200)",
+            )
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(DB_NAME, 11, true, MIGRATION_10_11)
+
+        // El proveedor queda como copia original; el nombre del usuario sigue
+        // siendo el efectivo y el resto de columnas nuevas parten de cero.
+        db.query("SELECT providerName, providerNameNorm, customOrder, hidden FROM channels").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("La 1", c.getString(0))
+            assertEquals("la 1", c.getString(1))
+            assertTrue(c.isNull(2))
+            assertEquals(0, c.getInt(3))
+        }
+        db.query("SELECT providerName FROM categories").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("TDT", c.getString(0))
+        }
+        // La FTS se rellena desde la EPG existente.
+        db.query("SELECT title FROM programmes_fts WHERE programmes_fts MATCH 'telediario*'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("Telediario", c.getString(0))
+        }
+    }
+
+    @Test
+    fun migrateAll_1to11() {
         helper.createDatabase(DB_NAME, 1).close()
         helper.runMigrationsAndValidate(
-            DB_NAME, 9, true,
+            DB_NAME, 11, true,
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
             MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+            MIGRATION_9_10, MIGRATION_10_11,
         )
     }
 
