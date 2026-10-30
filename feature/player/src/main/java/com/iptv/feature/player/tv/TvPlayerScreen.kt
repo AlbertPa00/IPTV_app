@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -106,6 +107,7 @@ fun TvPlayerScreen(
     val guideRows by viewModel.guideRows.collectAsStateWithLifecycle()
     val railCategories by viewModel.railCategories.collectAsStateWithLifecycle()
     val railFilter by viewModel.railFilter.collectAsStateWithLifecycle()
+    val railLoaded by viewModel.channelListLoaded.collectAsStateWithLifecycle()
     val playPause = player?.let { rememberPlayPauseButtonState(it) }
 
     // Buffering no tiene holder oficial en media3-ui-compose: se observa
@@ -127,6 +129,8 @@ fun TvPlayerScreen(
     var osdDigits by remember { mutableStateOf("") }
     var menuDialog by remember { mutableStateOf<TvMenuDialog?>(null) }
     var lastInteractionAt by remember { mutableStateOf(System.currentTimeMillis()) }
+    // Un panel enfocable no se auto-oculta mientras algo dentro lo tenga.
+    var overlayFocused by remember { mutableStateOf(false) }
 
     // Canal elegido en el catálogo: llega por savedStateHandle al volver a
     // este destino y se consume una sola vez (se borra para no releerlo).
@@ -160,7 +164,10 @@ fun TvPlayerScreen(
 
     fun handleAction(action: TvAction) {
         when (action) {
-            TvAction.OpenControls -> overlay = TvOverlay.CONTROLS
+            TvAction.OpenControls -> {
+                overlayFocused = false
+                overlay = TvOverlay.CONTROLS
+            }
             TvAction.CloseOverlay -> {
                 overlay = TvOverlay.NONE
                 osdDigits = ""
@@ -215,7 +222,9 @@ fun TvPlayerScreen(
         when (overlay) {
             TvOverlay.CONTROLS -> {
                 delay(CONTROLS_HIDE_DELAY_MS)
-                overlay = TvOverlay.NONE
+                // Con un botón enfocado la barra no desaparece bajo el
+                // foco del usuario: se repliega al perderlo o con BACK.
+                if (!overlayFocused) overlay = TvOverlay.NONE
             }
             TvOverlay.INFO -> {
                 delay(INFO_HIDE_DELAY_MS)
@@ -391,6 +400,7 @@ fun TvPlayerScreen(
                 categories = railCategories,
                 filter = railFilter,
                 currentChannelId = state.channel?.id,
+                loaded = railLoaded,
                 onFilterPick = viewModel::selectRailFilter,
                 onPick = { id ->
                     viewModel.playChannel(id)
@@ -478,6 +488,7 @@ fun TvPlayerScreen(
                 onSeek = { delta -> handleAction(TvAction.SeekBy(delta)) },
                 onOpenRail = { handleAction(TvAction.OpenRail) },
                 onToggleFavorite = viewModel::toggleFavorite,
+                modifier = Modifier.onFocusChanged { overlayFocused = it.hasFocus },
             )
         }
     }

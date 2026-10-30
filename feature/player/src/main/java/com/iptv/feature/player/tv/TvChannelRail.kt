@@ -63,6 +63,7 @@ fun TvChannelRail(
     categories: List<CategoryEntity>,
     filter: PlayerViewModel.RailFilter,
     currentChannelId: Long?,
+    loaded: Boolean,
     onFilterPick: (PlayerViewModel.RailFilter) -> Unit,
     onPick: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -146,11 +147,22 @@ fun TvChannelRail(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp),
-                        strokeWidth = 2.dp,
-                    )
+                    if (loaded) {
+                        // Filtro sin resultados (p. ej. sin favoritos): un
+                        // mensaje, no un spinner que nunca termina.
+                        Text(
+                            text = stringResource(R.string.player_rail_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                        )
+                    } else {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    }
                 }
             } else {
                 LazyColumn(

@@ -32,6 +32,9 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   el gesto de arrastrar para refrescar).
 - La tecla "último canal" del mando (LAST_CHANNEL/RECALL) alterna con el
   canal anterior; el zap ya actualiza el canal guardado del arranque.
+- En TV la barra de controles ya no desaparece sola mientras un botón
+  tiene el foco, y la lista de canales muestra un mensaje cuando un
+  filtro no tiene resultados en vez de un spinner eterno.
 
 ### Corregido
 - Canales que no llegaban a emitir al Chromecast en cuentas con límite de

@@ -11,6 +11,7 @@
     <string name="player_next_channel">Canal siguiente</string>
     <string name="player_channel_list">Lista de canales</string>
     <string name="player_browse_catalog">Ver catálogo</string>
+    <string name="player_rail_empty">Ningún canal en este filtro</string>
     <string name="player_pip">Ventana flotante</string>
     <string name="player_live">EN DIRECTO</string>
     <string name="player_on_demand">BAJO DEMANDA</string>

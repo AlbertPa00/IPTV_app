@@ -155,6 +155,11 @@ class PlayerViewModel @Inject constructor(
     val hasChannelList: StateFlow<Boolean> = _hasChannelList.asStateFlow()
     private var channelListRequested = false
 
+    /** La lista del rail ya respondió una vez: sin ella un filtro vacío
+     *  mostraría un spinner eterno en lugar de "sin canales". */
+    private val _channelListLoaded = MutableStateFlow(false)
+    val channelListLoaded: StateFlow<Boolean> = _channelListLoaded.asStateFlow()
+
     /** Filtro activo del rail de canales de TV (no afecta al orden de zap). */
     sealed interface RailFilter {
         data object All : RailFilter
@@ -171,8 +176,10 @@ class PlayerViewModel @Inject constructor(
     /** Carga perezosa de la lista de canales: solo cuando el panel se abre. */
     fun requestChannelList() {
         if (channelListRequested) return
-        channelListRequested = true
+        // El flag sólo se sella con fuente resuelta: abrir el rail antes de
+        // que el canal cargue no debe impedir una carga posterior.
         val sourceId = _uiState.value.channel?.sourceId ?: return
+        channelListRequested = true
         viewModelScope.launch {
             _railCategories.value = categoryDao.visibleBySource(sourceId, Kinds.LIVE)
             reloadChannelList(sourceId)
@@ -192,6 +199,7 @@ class PlayerViewModel @Inject constructor(
             RailFilter.Favorites -> channelDao.liveFavoritesBySource(sourceId)
             is RailFilter.Category -> channelDao.liveByCategory(sourceId, filter.id)
         }
+        _channelListLoaded.value = true
     }
 
     // -- EPG (shell de TV) ------------------------------------------------------
