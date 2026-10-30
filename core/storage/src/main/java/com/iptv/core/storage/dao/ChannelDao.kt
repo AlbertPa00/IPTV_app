@@ -188,6 +188,14 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
     suspend fun liveBySource(sourceId: Long): List<ChannelEntity>
 
+    /** Canales en directo de una categoría (filtro del rail de TV). */
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND categoryId = :categoryId AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
+    suspend fun liveByCategory(sourceId: Long, categoryId: Long): List<ChannelEntity>
+
+    /** Canales en directo favoritos (filtro del rail de TV). */
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND isFavorite = 1 AND $UNLOCKED_ONLY ORDER BY sortOrder, name")
+    suspend fun liveFavoritesBySource(sourceId: Long): List<ChannelEntity>
+
     /**
      * Escaneo ligero de las series de una fuente (sólo las columnas que el
      * detalle usa para agrupar episodios): materializar todas las entidades

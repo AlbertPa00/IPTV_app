@@ -18,6 +18,10 @@ interface CategoryDao {
     @Query("SELECT * FROM categories WHERE sourceId = :sourceId AND kind = :kind AND isLocked = 0 AND hidden = 0 ORDER BY sortOrder, name")
     fun observeBySource(sourceId: Long, kind: String): Flow<List<CategoryEntity>>
 
+    /** Snapshot no reactivo de [observeBySource]: rail de canales en TV. */
+    @Query("SELECT * FROM categories WHERE sourceId = :sourceId AND kind = :kind AND isLocked = 0 AND hidden = 0 ORDER BY sortOrder, name")
+    suspend fun visibleBySource(sourceId: Long, kind: String): List<CategoryEntity>
+
     /** Todas las categorías (incluidas bloqueadas/ocultas) para la gestión. */
     @Query("SELECT * FROM categories WHERE sourceId = :sourceId ORDER BY kind, sortOrder, name")
     fun observeAllBySource(sourceId: Long): Flow<List<CategoryEntity>>

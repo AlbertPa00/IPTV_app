@@ -60,4 +60,6 @@
     <string name="player_guide_title">Guía</string>
     <string name="player_guide_empty">Sin datos de guía para esta fuente</string>
     <string name="player_exit">Salir</string>
+    <string name="player_all">Todos</string>
+    <string name="player_favorites">Favoritos</string>
 </resources>

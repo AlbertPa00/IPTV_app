@@ -60,4 +60,6 @@
     <string name="player_guide_title">Guide</string>
     <string name="player_guide_empty">No guide data for this source</string>
     <string name="player_exit">Exit</string>
+    <string name="player_all">All</string>
+    <string name="player_favorites">Favorites</string>
 </resources>

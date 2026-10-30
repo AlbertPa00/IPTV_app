@@ -20,6 +20,8 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 - Menú contextual en TV: la tecla MENU abre las acciones sobre el canal
   en curso —lista de canales, guía, favorito, pistas de audio/subtítulos,
   temporizador de apagado y salir— navegables con el mando.
+- Filtros en la lista de canales de TV: sobre el rail hay chips para ver
+  todos los canales, sólo favoritos o una categoría concreta.
 
 ### Corregido
 - Canales que no llegaban a emitir al Chromecast en cuentas con límite de

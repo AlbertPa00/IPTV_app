@@ -94,6 +94,8 @@ fun TvPlayerScreen(
     val hasChannelList by viewModel.hasChannelList.collectAsStateWithLifecycle()
     val nowNext by viewModel.nowNext.collectAsStateWithLifecycle()
     val guideRows by viewModel.guideRows.collectAsStateWithLifecycle()
+    val railCategories by viewModel.railCategories.collectAsStateWithLifecycle()
+    val railFilter by viewModel.railFilter.collectAsStateWithLifecycle()
     val playPause = player?.let { rememberPlayPauseButtonState(it) }
 
     // Buffering no tiene holder oficial en media3-ui-compose: se observa
@@ -360,7 +362,10 @@ fun TvPlayerScreen(
         ) {
             TvChannelRail(
                 channels = channelList,
+                categories = railCategories,
+                filter = railFilter,
                 currentChannelId = state.channel?.id,
+                onFilterPick = viewModel::selectRailFilter,
                 onPick = { id ->
                     viewModel.playChannel(id)
                     overlay = TvOverlay.INFO

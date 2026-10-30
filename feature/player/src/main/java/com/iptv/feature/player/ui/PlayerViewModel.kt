@@ -24,6 +24,7 @@ import androidx.media3.session.MediaSession
 import com.iptv.core.common.download.DownloadController
 import com.iptv.core.common.pip.PipController
 import com.iptv.core.network.DEFAULT_USER_AGENT
+import com.iptv.core.storage.dao.CategoryDao
 import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.DownloadDao
 import com.iptv.core.storage.dao.GuideRow
@@ -31,6 +32,7 @@ import com.iptv.core.storage.dao.PlaybackHistoryDao
 import com.iptv.core.storage.dao.ProgrammeDao
 import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.storage.dao.SourceDao
+import com.iptv.core.storage.entity.CategoryEntity
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.DownloadEntity
 import com.iptv.core.storage.entity.DownloadSections
@@ -78,6 +80,7 @@ class PlayerViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     savedStateHandle: SavedStateHandle,
     private val channelDao: ChannelDao,
+    private val categoryDao: CategoryDao,
     private val sourceDao: SourceDao,
     private val playbackHistoryDao: PlaybackHistoryDao,
     private val downloadDao: DownloadDao,
@@ -149,13 +152,42 @@ class PlayerViewModel @Inject constructor(
     val hasChannelList: StateFlow<Boolean> = _hasChannelList.asStateFlow()
     private var channelListRequested = false
 
+    /** Filtro activo del rail de canales de TV (no afecta al orden de zap). */
+    sealed interface RailFilter {
+        data object All : RailFilter
+        data object Favorites : RailFilter
+        data class Category(val id: Long) : RailFilter
+    }
+
+    private val _railCategories = MutableStateFlow<List<CategoryEntity>>(emptyList())
+    val railCategories: StateFlow<List<CategoryEntity>> = _railCategories.asStateFlow()
+
+    private val _railFilter = MutableStateFlow<RailFilter>(RailFilter.All)
+    val railFilter: StateFlow<RailFilter> = _railFilter.asStateFlow()
+
     /** Carga perezosa de la lista de canales: solo cuando el panel se abre. */
     fun requestChannelList() {
         if (channelListRequested) return
         channelListRequested = true
         val sourceId = _uiState.value.channel?.sourceId ?: return
         viewModelScope.launch {
-            _channelList.value = channelDao.liveBySource(sourceId)
+            _railCategories.value = categoryDao.visibleBySource(sourceId, Kinds.LIVE)
+            reloadChannelList(sourceId)
+        }
+    }
+
+    /** Cambia el filtro del rail y recarga la lista mostrada. */
+    fun selectRailFilter(filter: RailFilter) {
+        _railFilter.value = filter
+        val sourceId = _uiState.value.channel?.sourceId ?: return
+        viewModelScope.launch { reloadChannelList(sourceId) }
+    }
+
+    private suspend fun reloadChannelList(sourceId: Long) {
+        _channelList.value = when (val filter = _railFilter.value) {
+            RailFilter.All -> channelDao.liveBySource(sourceId)
+            RailFilter.Favorites -> channelDao.liveFavoritesBySource(sourceId)
+            is RailFilter.Category -> channelDao.liveByCategory(sourceId, filter.id)
         }
     }
 

@@ -1,8 +1,10 @@
 package com.iptv.feature.player.tv
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -11,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,20 +44,26 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.iptv.core.designsystem.components.IptvAsyncImage
 import com.iptv.core.designsystem.tv.tvFocusable
+import com.iptv.core.storage.entity.CategoryEntity
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.feature.player.R
+import com.iptv.feature.player.ui.PlayerViewModel
 
 private val RAIL_WIDTH = 380.dp
 
 /**
- * Panel lateral de canales para zapear con el mando. El foco cae en el
- * canal en curso; DPAD_UP/DOWN navegan, CENTER reproduce, LEFT/BACK
- * cierran (lo decide el router de teclas de la pantalla).
+ * Panel lateral de canales para zapear con el mando. Sobre la lista hay
+ * una fila de filtros (Todos / Favoritos / categorías): seleccionar uno
+ * recarga la lista mostrada. El foco inicial cae en el canal en curso;
+ * DPAD_UP/DOWN navegan, CENTER reproduce, LEFT/BACK cierran.
  */
 @Composable
 fun TvChannelRail(
     channels: List<ChannelEntity>,
+    categories: List<CategoryEntity>,
+    filter: PlayerViewModel.RailFilter,
     currentChannelId: Long?,
+    onFilterPick: (PlayerViewModel.RailFilter) -> Unit,
     onPick: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -95,6 +105,42 @@ fun TvChannelRail(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
             )
+            if (categories.isNotEmpty()) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp),
+                    modifier = Modifier.padding(bottom = 8.dp),
+                ) {
+                    item(key = "all") {
+                        RailChip(
+                            label = stringResource(R.string.player_all),
+                            selected = filter == PlayerViewModel.RailFilter.All,
+                            onClick = { onFilterPick(PlayerViewModel.RailFilter.All) },
+                        )
+                    }
+                    item(key = "favorites") {
+                        RailChip(
+                            label = stringResource(R.string.player_favorites),
+                            icon = Icons.Filled.Star,
+                            selected = filter == PlayerViewModel.RailFilter.Favorites,
+                            onClick = { onFilterPick(PlayerViewModel.RailFilter.Favorites) },
+                        )
+                    }
+                    items(
+                        items = categories,
+                        key = { it.id },
+                    ) { category ->
+                        RailChip(
+                            label = category.name,
+                            selected = (filter as? PlayerViewModel.RailFilter.Category)
+                                ?.id == category.id,
+                            onClick = {
+                                onFilterPick(PlayerViewModel.RailFilter.Category(category.id))
+                            },
+                        )
+                    }
+                }
+            }
             if (channels.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxWidth().weight(1f),
@@ -131,6 +177,48 @@ fun TvChannelRail(
                 }
             }
         }
+    }
+}
+
+/** Chip de filtro del rail: Todos / Favoritos / una categoría. */
+@Composable
+private fun RailChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+) {
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(shape)
+            .background(
+                if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    Color.White.copy(alpha = 0.12f)
+                },
+            )
+            .tvFocusable(shape = shape, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) Color.White else MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(
+            text = label,
+            color = Color.White,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+        )
     }
 }
 
