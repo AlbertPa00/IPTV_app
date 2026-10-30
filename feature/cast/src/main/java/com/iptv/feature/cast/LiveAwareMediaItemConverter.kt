@@ -48,11 +48,14 @@ class LiveAwareMediaItemConverter : MediaItemConverter {
             )
 
         // The Default Media Receiver needs to know the HLS segment format to
-        // demux correctly. IPTV live HLS almost always uses MPEG-TS segments.
+        // demux correctly. IPTV live HLS almost always uses MPEG-TS segments,
+        // but CMAF/fMP4 playlists exist — the sender flags them via
+        // EXTRA_HLS_FMP4 (detected while probing the playlist body).
         // setHlsSegmentFormat takes a String per HlsSegmentFormat annotation.
         if (mimeType == MimeTypes.APPLICATION_M3U8) {
-            builder.setHlsSegmentFormat("TS")
-            builder.setHlsVideoSegmentFormat("MPEG2_TS")
+            val fmp4 = mediaItem.mediaMetadata.extras?.getBoolean(EXTRA_HLS_FMP4) == true
+            builder.setHlsSegmentFormat(if (fmp4) "FMP4" else "TS")
+            builder.setHlsVideoSegmentFormat(if (fmp4) "FMP4" else "MPEG2_TS")
         }
 
         info.contentUrl?.let { builder.setContentUrl(it) }
@@ -73,5 +76,10 @@ class LiveAwareMediaItemConverter : MediaItemConverter {
         }
 
         return MediaQueueItem.Builder(builder.build()).build()
+    }
+
+    companion object {
+        /** Extra (MediaMetadata.extras) que marca playlists HLS con segmentos fMP4. */
+        const val EXTRA_HLS_FMP4 = "iptv.hlsFmp4"
     }
 }

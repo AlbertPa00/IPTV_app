@@ -2,11 +2,47 @@ package com.iptv.feature.cast
 
 import androidx.media3.common.MimeTypes
 import com.google.android.gms.cast.MediaStatus
+import com.iptv.core.network.StreamProber
 
 /** Pure decisions shared by local and Cast playback. */
 object CastMediaDecisions {
     enum class DirectCastCompatibility { COMPATIBLE, UNKNOWN, INCOMPATIBLE }
 
+    /**
+     * Container declared by the provider (Xtream `container_extension`,
+     * M3U URL extension) mapped to a probe kind. Unknown/unsupported values
+     * return null — the stream is probed for real then.
+     */
+    fun kindFromContainerExt(ext: String?): StreamProber.Kind? = when (ext?.lowercase()) {
+        "ts", "m2ts" -> StreamProber.Kind.TS
+        "m3u8", "m3u" -> StreamProber.Kind.HLS
+        "mp4", "m4v" -> StreamProber.Kind.MP4
+        "mpd" -> StreamProber.Kind.DASH
+        else -> null
+    }
+
+    /**
+     * Estimated BANDWIDTH for #EXT-X-STREAM-INF tags missing it. The Cast
+     * receiver ranks variants by this value, so a flat default leaves it
+     * stuck on whatever variant the playlist lists first. Derived from
+     * RESOLUTION when present, else a safe low default that lets the
+     * receiver upshift after measuring real throughput.
+     */
+    fun estimateBandwidth(streamInfLine: String): Int {
+        val match = RESOLUTION_ATTR.find(streamInfLine) ?: return DEFAULT_BANDWIDTH
+        val pixels = match.groupValues[1].toLong() * match.groupValues[2].toLong()
+        return when {
+            pixels >= 3840L * 2160 -> 8_000_000
+            pixels >= 1920L * 1080 -> 5_000_000
+            pixels >= 1280L * 720 -> 2_500_000
+            else -> 1_200_000
+        }
+    }
+
+    private val RESOLUTION_ATTR = Regex("""RESOLUTION=(\d+)x(\d+)""")
+    private const val DEFAULT_BANDWIDTH = 1_500_000
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun mimeTypeFor(url: String): String? {
         val path = url.substringBefore('#').substringBefore('?').lowercase()
         return when {

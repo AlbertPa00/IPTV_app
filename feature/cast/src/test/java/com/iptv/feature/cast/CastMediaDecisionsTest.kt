@@ -113,6 +113,91 @@ class CastMediaDecisionsTest {
     }
 
     @Test
+    fun `declared container maps to probe kinds and ignores unknown values`() {
+        assertEquals(StreamProber.Kind.TS, CastMediaDecisions.kindFromContainerExt("ts"))
+        assertEquals(StreamProber.Kind.TS, CastMediaDecisions.kindFromContainerExt("TS"))
+        assertEquals(StreamProber.Kind.HLS, CastMediaDecisions.kindFromContainerExt("m3u8"))
+        assertEquals(StreamProber.Kind.MP4, CastMediaDecisions.kindFromContainerExt("mp4"))
+        assertEquals(StreamProber.Kind.DASH, CastMediaDecisions.kindFromContainerExt("mpd"))
+        // Containers the receiver can't use anyway still need a real probe.
+        assertEquals(null, CastMediaDecisions.kindFromContainerExt("mkv"))
+        assertEquals(null, CastMediaDecisions.kindFromContainerExt(null))
+    }
+
+    @Test
+    fun `bandwidth estimate ranks variants by resolution`() {
+        assertEquals(
+            8_000_000,
+            CastMediaDecisions.estimateBandwidth("#EXT-X-STREAM-INF:RESOLUTION=3840x2160"),
+        )
+        assertEquals(
+            5_000_000,
+            CastMediaDecisions.estimateBandwidth("#EXT-X-STREAM-INF:RESOLUTION=1920x1080,CODECS=\"a\""),
+        )
+        assertEquals(
+            2_500_000,
+            CastMediaDecisions.estimateBandwidth("#EXT-X-STREAM-INF:RESOLUTION=1280x720"),
+        )
+        assertEquals(
+            1_200_000,
+            CastMediaDecisions.estimateBandwidth("#EXT-X-STREAM-INF:RESOLUTION=720x576"),
+        )
+        // No resolution → safe low default, the receiver upshifts on its own.
+        assertEquals(
+            1_500_000,
+            CastMediaDecisions.estimateBandwidth("#EXT-X-STREAM-INF:CODECS=\"avc1\""),
+        )
+    }
+
+    @Test
+    fun `fmp4 playlists are detected by init maps and m4s segments`() {
+        val tsPlaylist = "#EXTM3U\n#EXT-X-TARGETDURATION:4\nseg1.ts\nseg2.ts\n"
+        val fmp4Playlist =
+            "#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXT-X-TARGETDURATION:4\nseg1.m4s\n"
+        val m4sPlaylist = "#EXTM3U\n#EXT-X-TARGETDURATION:4\nseg_1.m4s\nseg_2.m4s\n"
+        assertFalse(StreamProber.looksLikeFmp4Hls(tsPlaylist))
+        assertTrue(StreamProber.looksLikeFmp4Hls(fmp4Playlist))
+        assertTrue(StreamProber.looksLikeFmp4Hls(m4sPlaylist))
+    }
+
+    @Test
+    fun `mpd rewrite routes relative and absolute segment urls through proxy`() {
+        val mpd = """<?xml version="1.0"?>
+            |<MPD type="dynamic">
+            |  <Period><AdaptationSet><Representation id="v">
+            |    <SegmentTemplate media="seg_${'$'}Number${'$'}.m4s" initialization="init.mp4"/>
+            |  </Representation></AdaptationSet></Period>
+            |</MPD>""".trimMargin()
+        val rewritten = rewriteMpdManifest(
+            mpd,
+            "http://panel.test:8080/dash/ch1/manifest.mpd",
+            "http://192.168.1.10:8000/abcd1234",
+        )
+        // BaseURL injected pointing at the /pd/ route for the manifest dir.
+        assertTrue(rewritten.contains("<BaseURL>http://192.168.1.10:8000/abcd1234/pd/"))
+        // Templated relative attrs stay relative — resolved via the BaseURL.
+        assertTrue(rewritten.contains("media=\"seg_${'$'}Number${'$'}.m4s\""))
+        assertTrue(rewritten.contains("initialization=\"init.mp4\""))
+
+        val absMpd = """<MPD><Period><AdaptationSet><Representation>
+            |<SegmentTemplate media="/dash/ch1/seg_${'$'}Number${'$'}.m4s"
+            | initialization="http://panel.test:8080/dash/ch1/init.mp4"
+            | index="http://other.test/i.mp4"/>
+            |</Representation></AdaptationSet></Period></MPD>""".trimMargin()
+        val rewrittenAbs = rewriteMpdManifest(
+            absMpd,
+            "http://panel.test:8080/dash/ch1/manifest.mpd",
+            "http://192.168.1.10:8000/abcd1234",
+        )
+        // Path-absolute and same-origin absolute refs go through /pa/ and /pd/.
+        assertTrue(rewrittenAbs.contains("media=\"/abcd1234/pa/"))
+        assertTrue(rewrittenAbs.contains("initialization=\"init.mp4\""))  // same-dir absolute → relative
+        assertFalse(rewrittenAbs.contains("initialization=\"http://panel.test"))
+        // Foreign origins pass through untouched.
+        assertTrue(rewrittenAbs.contains("index=\"http://other.test/i.mp4\""))
+    }
+
+    @Test
     fun `cast implementation classes are packaged with player`() {
         val loader = javaClass.classLoader
         assertNotNull(Class.forName("androidx.media3.cast.CastPlayer", false, loader))

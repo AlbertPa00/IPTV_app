@@ -5,6 +5,24 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 
 ## [Unreleased]
 
+### Corregido
+- Canales que no llegaban a emitir al Chromecast en cuentas con límite de
+  conexiones del proveedor: el móvil ahora suelta su conexión antes de que
+  el televisor pida el stream, y si el envío falla la reproducción continúa
+  donde estaba.
+- Canales en directo con HLS de segmentos fMP4/CMAF que fallaban al emitir:
+  se detectan al analizar el stream y se declaran al Chromecast con el
+  formato correcto.
+- Canales DASH (.mpd) que no se veían al emitir: el proxy reescribe ahora
+  las rutas de sus segmentos.
+
+### Mejorado
+- Menos pérdida de calidad al emitir playlists con varias calidades sin
+  bitrate declarado: se estima a partir de la resolución para que el
+  Chromecast distinga las variantes en vez de quedarse en la primera.
+- Una conexión menos al proveedor al emitir canales Xtream: cuando la
+  cuenta declara el formato del stream se evita un sondeo extra.
+
 ## [1.3.0] - 2026-10-30
 
 ### Añadido

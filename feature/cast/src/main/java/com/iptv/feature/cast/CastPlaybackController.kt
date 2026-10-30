@@ -70,6 +70,9 @@ internal class CastPlaybackController @Inject constructor(
     private var activeCastHlsMode: String? = null
     private var transcodeEscalated = false
 
+    /** Posición local guardada al detener la reproducción para transferir. */
+    private var pendingResumePositionMs: Long? = null
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _volume = MutableStateFlow(1f)
@@ -168,6 +171,12 @@ internal class CastPlaybackController @Inject constructor(
             emitRemoteActive()
             return
         }
+        // Detiene la reproducción local antes de sondear/abrir el stream
+        // para el receptor: los paneles con límite de una conexión rechazan
+        // la segunda y el Cast nunca llega a arrancar. Si la transferencia
+        // falla, LocalResume reanuda en pendingResumePositionMs.
+        pendingResumePositionMs = positionMs
+        localPlayer?.stop()
         applyCastItem(item, positionMs, playWhenReady, spec)
     }
 
@@ -219,6 +228,17 @@ internal class CastPlaybackController @Inject constructor(
         val castItem = item.buildUpon()
             .setUri(proxiedUrl)
             .setMimeType(target.mimeType)
+            .setMediaMetadata(
+                if (target.hlsFmp4) {
+                    item.mediaMetadata.buildUpon()
+                        .setExtras(android.os.Bundle().apply {
+                            putBoolean(LiveAwareMediaItemConverter.EXTRA_HLS_FMP4, true)
+                        })
+                        .build()
+                } else {
+                    item.mediaMetadata
+                },
+            )
             .build()
 
         runCatching {
@@ -233,15 +253,25 @@ internal class CastPlaybackController @Inject constructor(
             _uiState.update { it.copy(transferPending = false) }
             CastProxyRuntime.stop(appContext)
             _events.emit(CastEvent.LocalResume(
-                transferFromRemote = false, playWhenReady = null, showError = false,
+                transferFromRemote = false,
+                playWhenReady = castTransferPlayWhenReady,
+                showError = false,
+                positionMs = pendingResumePositionMs,
             ))
         }
     }
 
     /** [hlsMode]: null = direct proxy; "r" = ffmpeg remux to HLS;
      *  "t" = ffmpeg remux with audio→AAC transcode; "n" = in-memory cutter.
-     *  The receiver can't play progressive video/mp2t — live TS needs HLS. */
-    private data class CastTarget(val url: String, val mimeType: String, val hlsMode: String?)
+     *  The receiver can't play progressive video/mp2t — live TS needs HLS.
+     *  [hlsFmp4]: la playlist HLS usa segmentos fMP4/CMAF — hay que declararlo
+     *  al receptor o los interpreta como MPEG-TS. */
+    private data class CastTarget(
+        val url: String,
+        val mimeType: String,
+        val hlsMode: String?,
+        val hlsFmp4: Boolean = false,
+    )
 
     /**
      * Resolves the URL and MIME type to hand to the receiver. For Xtream live
@@ -262,11 +292,20 @@ internal class CastPlaybackController @Inject constructor(
         } else {
             listOf(hlsVariant, originalUrl)
         }
-        for (url in candidates) {
-            val kind = StreamProber.probe(okHttpClient, url, spec.userAgent, spec.referrer)
-            Log.d(TAG, "Probe $url -> $kind")
-            val target = when (kind) {
-                StreamProber.Kind.HLS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, null)
+        // El contenedor declarado por el proveedor sustituye al sondeo de la
+        // URL original cuando la variante .m3u8 ya se sondeó y falló — una
+        // conexión menos contra paneles con límite de sesiones estricto.
+        val declaredKind = CastMediaDecisions.kindFromContainerExt(spec.containerExt)
+        for ((index, url) in candidates.withIndex()) {
+            val result = if (index > 0 && url == originalUrl && declaredKind != null) {
+                StreamProber.ProbeResult(declaredKind)
+            } else {
+                StreamProber.probeDetailed(okHttpClient, url, spec.userAgent, spec.referrer)
+            }
+            Log.d(TAG, "Probe $url -> ${result.kind} (fmp4=${result.hlsFmp4})")
+            val target = when (result.kind) {
+                StreamProber.Kind.HLS ->
+                    CastTarget(url, MimeTypes.APPLICATION_M3U8, null, result.hlsFmp4)
                 // Raw TS live → remux to HLS through ffmpeg (keyframe-aligned
                 // segments, far more reliable than naive packet cuts).
                 StreamProber.Kind.TS -> CastTarget(url, MimeTypes.APPLICATION_M3U8, hlsModeOverride ?: defaultHlsMode())
@@ -298,6 +337,7 @@ internal class CastPlaybackController @Inject constructor(
     /** Termina la sesión y devuelve la reproducción al local. */
     override fun endSession() {
         val wasCasting = _uiState.value.casting
+        val wasPending = castTransferPending
         castTransferPending = false
         CastPlayerRuntime.clearLoaded()
         CastProxyRuntime.stop(appContext)
@@ -305,7 +345,10 @@ internal class CastPlaybackController @Inject constructor(
             it.copy(casting = false, connecting = false, transferPending = false, deviceName = null)
         }
         _events.tryEmit(CastEvent.LocalResume(
-            transferFromRemote = wasCasting, playWhenReady = null, showError = false,
+            transferFromRemote = wasCasting,
+            playWhenReady = if (wasPending) castTransferPlayWhenReady else null,
+            showError = false,
+            positionMs = pendingResumePositionMs,
         ))
         runCatching { castContext?.sessionManager?.endCurrentSession(true) }
     }
@@ -383,6 +426,7 @@ internal class CastPlaybackController @Inject constructor(
                     transferFromRemote = wasCasting,
                     playWhenReady = resumePlayback,
                     showError = true,
+                    positionMs = pendingResumePositionMs,
                 ))
             }
         }
@@ -413,7 +457,10 @@ internal class CastPlaybackController @Inject constructor(
         }
         if (wasCasting || wasPending) {
             _events.tryEmit(CastEvent.LocalResume(
-                transferFromRemote = wasCasting, playWhenReady = null, showError = false,
+                transferFromRemote = wasCasting,
+                playWhenReady = if (wasPending) castTransferPlayWhenReady else null,
+                showError = false,
+                positionMs = pendingResumePositionMs,
             ))
         }
     }
@@ -425,6 +472,7 @@ internal class CastPlaybackController @Inject constructor(
     }
 
     private fun emitRemoteActive() {
+        pendingResumePositionMs = null
         _uiState.update {
             it.copy(
                 casting = true,

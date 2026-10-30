@@ -29,7 +29,15 @@ object StreamProber {
         UNKNOWN(null),
     }
 
+    /**
+     * Resultado completo del sondeo. [hlsFmp4] indica que el playlist HLS
+     * usa segmentos fMP4/CMAF (#EXT-X-MAP, .m4s…): el receptor Cast debe
+     * declararlo así o demultiplexa esperando MPEG-TS.
+     */
+    data class ProbeResult(val kind: Kind, val hlsFmp4: Boolean = false)
+
     private const val SNIFF_BYTES = 512
+    private const val PLAYLIST_SNIFF_BYTES = 16 * 1024
     private const val TS_SYNC: Byte = 0x47
 
     /**
@@ -37,21 +45,33 @@ object StreamProber {
      * petición en vano (zapping Cast, reintentos locales). Vive en el objeto,
      * es decir en el proceso; cada entrada pesa ~100 bytes por URL.
      */
-    private val cache = java.util.concurrent.ConcurrentHashMap<Triple<String, String, String>, Kind>()
+    private val cache = java.util.concurrent.ConcurrentHashMap<Triple<String, String, String>, ProbeResult>()
 
     /**
      * Fetches the first bytes of [url] and sniffs the payload.
      * Never throws; returns [Kind.UNKNOWN] on any failure.
      */
-    fun probe(client: OkHttpClient, url: String, userAgent: String, referrer: String?): Kind {
+    fun probe(client: OkHttpClient, url: String, userAgent: String, referrer: String?): Kind =
+        probeDetailed(client, url, userAgent, referrer).kind
+
+    /**
+     * Igual que [probe] pero devuelve el [ProbeResult] completo (p. ej. el
+     * flag fMP4 que el receptor Cast necesita para demultiplexar el HLS).
+     */
+    fun probeDetailed(
+        client: OkHttpClient,
+        url: String,
+        userAgent: String,
+        referrer: String?,
+    ): ProbeResult {
         val key = Triple(url, userAgent, referrer.orEmpty())
-        return cache[key] ?: doProbe(client, url, userAgent, referrer).also { kind ->
+        return cache[key] ?: doProbe(client, url, userAgent, referrer).also { result ->
             // UNKNOWN suele ser fallo transitorio (timeout, red caída): no se
             // cachea para que el próximo intento sondee de verdad. Techo: una
             // lista de 50k canales no puede inflar el mapa sin fin.
-            if (kind != Kind.UNKNOWN) {
+            if (result.kind != Kind.UNKNOWN) {
                 if (cache.size >= MAX_CACHE) cache.clear()
-                cache[key] = kind
+                cache[key] = result
             }
         }
     }
@@ -61,7 +81,7 @@ object StreamProber {
         url: String,
         userAgent: String,
         referrer: String?,
-    ): Kind = runCatching {
+    ): ProbeResult = runCatching {
         val request = Request.Builder().url(url)
             .header("User-Agent", userAgent)
             .header("Range", "bytes=0-4095")
@@ -77,19 +97,23 @@ object StreamProber {
             .newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 Log.w(TAG, "Probe HTTP ${response.code} for ${redactUrl(url)}")
-                return@use Kind.UNKNOWN
+                return@use ProbeResult(Kind.UNKNOWN)
             }
+            val stream = response.body!!.byteStream()
             val head = ByteArray(SNIFF_BYTES)
-            val n = readUpTo(response.body!!.byteStream(), head)
-            val sniffed = sniffPayload(head, n)
-            if (sniffed != Kind.UNKNOWN) {
-                sniffed
-            } else {
-                kindFromContentType(response.header("Content-Type"))
+            val n = readUpTo(stream, head)
+            var sniffed = sniffPayload(head, n)
+            if (sniffed == Kind.UNKNOWN) {
+                sniffed = kindFromContentType(response.header("Content-Type"))
             }
+            // Las playlists son texto pequeño: se leen unos KB más para
+            // detectar segmentos fMP4 — el receptor Cast los necesita
+            // declarados o los interpreta como MPEG-TS y la carga falla.
+            val fmp4 = sniffed == Kind.HLS && detectFmp4Playlist(stream, head, n)
+            ProbeResult(sniffed, fmp4)
         }
     }.onFailure { Log.w(TAG, "Probe failed for ${redactUrl(url)}", it) }
-        .getOrDefault(Kind.UNKNOWN)
+        .getOrDefault(ProbeResult(Kind.UNKNOWN))
 
     /**
      * Sniffs an already-read payload prefix — same logic the proxy uses to
@@ -101,7 +125,7 @@ object StreamProber {
             head[6] == 'y'.code.toByte() && head[7] == 'p'.code.toByte() -> Kind.MP4
         else -> {
             val text = String(head, 0, n, Charsets.UTF_8)
-                .trimStart { it == '﻿' || it.isWhitespace() }
+                .trimStart { it == '\uFEFF' || it.isWhitespace() }
             when {
                 text.startsWith("#EXTM3U") -> Kind.HLS
                 text.startsWith("<MPD") || text.startsWith("<?xml") && text.contains("<MPD") -> Kind.DASH
@@ -109,6 +133,47 @@ object StreamProber {
             }
         }
     }
+
+    /**
+     * Continúa leyendo el playlist (acotado a [PLAYLIST_SNIFF_BYTES]) y
+     * busca marcas de segmentos fMP4. Acumular el texto completo cubre las
+     * marcas que queden a caballo entre lecturas.
+     */
+    private fun detectFmp4Playlist(stream: InputStream, head: ByteArray, headLen: Int): Boolean {
+        val text = StringBuilder().append(String(head, 0, headLen, Charsets.UTF_8))
+        // Content-Type puede mentir y declarar playlist sobre binario: sin
+        // la marca EXTM3U no hay playlist que inspeccionar.
+        if (!text.toString().trimStart { it == '\uFEFF' || it.isWhitespace() }.startsWith("#EXTM3U")) {
+            return false
+        }
+        if (looksLikeFmp4Hls(text)) return true
+        val buf = ByteArray(2048)
+        var total = headLen
+        return try {
+            while (total < PLAYLIST_SNIFF_BYTES) {
+                val n = stream.read(buf, 0, minOf(buf.size, PLAYLIST_SNIFF_BYTES - total))
+                if (n < 0) break
+                text.append(String(buf, 0, n, Charsets.UTF_8))
+                if (looksLikeFmp4Hls(text)) return true
+                total += n
+            }
+            false
+        } catch (_: IOException) {
+            false
+        }
+    }
+
+    /**
+     * Marcas de un media playlist con segmentos fMP4/CMAF: `#EXT-X-MAP`
+     * (init map, siempre fMP4) o líneas de segmento .m4s/.cmfv/.cmfa. Las
+     * master playlists no declaran formato — devuelven false (se asume TS
+     * como hasta ahora; la alternativa exigiría sondear una variante).
+     */
+    fun looksLikeFmp4Hls(manifest: CharSequence): Boolean =
+        manifest.contains("#EXT-X-MAP") || FMP4_SEGMENT_LINE.containsMatchIn(manifest)
+
+    private val FMP4_SEGMENT_LINE =
+        Regex("""^[^#\s].*\.(m4s|cmfv|cmfa)(\?[^\s]*)?$""", RegexOption.MULTILINE)
 
     private fun kindFromContentType(contentType: String?): Kind = when {
         contentType == null -> Kind.UNKNOWN

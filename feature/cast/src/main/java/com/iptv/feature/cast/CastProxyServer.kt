@@ -77,8 +77,7 @@ class CastProxyServer(
      */
     fun proxyUrl(originalUrl: String): String {
         if (advertisedHost.isBlank() || port == 0) return originalUrl
-        val token = java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(originalUrl.toByteArray(Charsets.UTF_8))
+        val token = encodeUrlToken(originalUrl)
         return "http://$advertisedHost:$port/$secret/proxy/$token"
     }
 
@@ -92,8 +91,7 @@ class CastProxyServer(
      */
     fun hlsUrl(originalUrl: String, mode: String): String {
         if (advertisedHost.isBlank() || port == 0) return originalUrl
-        val token = java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("$mode|$originalUrl".toByteArray(Charsets.UTF_8))
+        val token = encodeUrlToken("$mode|$originalUrl")
         return "http://$advertisedHost:$port/$secret/hls/$token"
     }
 
@@ -189,6 +187,8 @@ private class ProxyServer(
             when {
                 routed.startsWith(HLS_PREFIX) -> serveHlsPlaylist(routed.removePrefix(HLS_PREFIX))
                 routed.startsWith(SEG_PREFIX) -> serveHlsSegment(routed.removePrefix(SEG_PREFIX))
+                routed.startsWith(PD_PREFIX) || routed.startsWith(PA_PREFIX) ->
+                    proxyRelative(routed, session)
                 routed.startsWith(PROXY_PREFIX) -> {
                     val targetUrl = decodeTarget(routed.removePrefix(PROXY_PREFIX))
                     if (targetUrl == null) {
@@ -279,9 +279,28 @@ private class ProxyServer(
         )
     }.getOrNull()
 
+    /**
+     * Relative-reference proxy used by rewritten MPDs: `/pd/<token>/<rest>`
+     * joins [rest] onto the base directory encoded in token, `/pa/<token>/<rest>`
+     * joins it onto the origin root. The receiver's own query string is
+     * preserved — NanoHTTPD splits it off `session.uri`.
+     */
+    private fun proxyRelative(path: String, session: IHTTPSession): Response {
+        val prefixLen = if (path.startsWith(PD_PREFIX)) PD_PREFIX.length else PA_PREFIX.length
+        val tail = path.substring(prefixLen)
+        val slash = tail.indexOf('/')
+        if (slash < 0) {
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Bad relative path")
+        }
+        val base = decodeTarget(tail.substring(0, slash))
+            ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Bad base token")
+        val query = session.queryParameterString?.takeIf { it.isNotEmpty() }?.let { "?$it" }.orEmpty()
+        return proxyRequest("$base/${tail.substring(slash + 1)}$query", session)
+    }
+
     private fun proxyRequest(targetUrl: String, session: IHTTPSession): Response {
         val path = targetUrl.substringBefore('?').substringBefore('#').lowercase()
-        val looksLikeManifest = path.endsWith(".m3u8") || path.endsWith(".m3u")
+        val looksLikeManifest = path.endsWith(".m3u8") || path.endsWith(".m3u") || path.endsWith(".mpd")
         // Manifests use the bounded-timeout client so a live playlist that
         // keeps the connection open doesn't hang the proxy. Segments and
         // progressive downloads use the streaming client with infinite
@@ -309,7 +328,8 @@ private class ProxyServer(
         // Only rewrite the body when it is genuinely an HLS playlist — Xtream
         // panels without HLS output serve raw MPEG-TS at .m3u8 URLs, and
         // mangling binary bytes as text corrupts the stream.
-        val possibleManifest = looksLikeManifest || upstreamType?.contains("mpegurl") == true
+        val possibleManifest = looksLikeManifest ||
+            upstreamType?.contains("mpegurl") == true || upstreamType?.contains("dash") == true
 
         val proxiedResponse = if (response.isSuccessful && possibleManifest) {
             val buffered = java.io.BufferedInputStream(body.byteStream(), PEEK_BUFFER_BYTES)
@@ -344,8 +364,25 @@ private class ProxyServer(
                 StreamProber.Kind.MP4 ->
                     newChunkedResponse(status, "video/mp4", buffered)
 
-                StreamProber.Kind.DASH ->
-                    newChunkedResponse(status, "application/dash+xml", buffered)
+                StreamProber.Kind.DASH -> {
+                    val manifestContent = readBoundedString(buffered, MAX_MANIFEST_BYTES)
+                    if (manifestContent == null) {
+                        response.close()
+                        newFixedLengthResponse(
+                            Response.Status.SERVICE_UNAVAILABLE,
+                            "text/plain",
+                            "Manifest read timed out",
+                        )
+                    } else {
+                        val rewritten = rewriteMpdManifest(
+                            manifestContent,
+                            response.request.url.toString(),
+                            "http://$advertisedHost:$listeningPort/$secret",
+                        )
+                        response.close()
+                        newFixedLengthResponse(Response.Status.OK, "application/dash+xml", rewritten)
+                    }
+                }
 
                 StreamProber.Kind.UNKNOWN -> {
                     // Mislabeled or empty manifest: pass bytes through as-is.
@@ -389,7 +426,7 @@ private class ProxyServer(
             // Server sent the playlist but keeps the socket open without EOF:
             // serve what we already have if it parses as a playlist.
             val partial = baos.toString("UTF-8")
-            if (partial.trimStart { it == '﻿' || it.isWhitespace() }.startsWith("#EXTM3U")) {
+            if (partial.trimStart { it == '\uFEFF' || it.isWhitespace() }.startsWith("#EXTM3U")) {
                 Log.w(TAG, "Manifest read timed out; serving ${partial.length} bytes anyway")
                 partial
             } else {
@@ -422,9 +459,11 @@ private class ProxyServer(
             val trimmed = line.trim()
             when {
                 // The Cast receiver requires BANDWIDTH on variant streams; many
-                // IPTV playlists omit it, so we inject a sane default.
+                // IPTV playlists omit it. A flat value makes every variant look
+                // identical so the receiver picks the first — estimate from
+                // RESOLUTION instead so quality tiers stay distinguishable.
                 trimmed.startsWith("#EXT-X-STREAM-INF:") && !trimmed.contains("BANDWIDTH=") ->
-                    "$trimmed,BANDWIDTH=1500000"
+                    "$trimmed,BANDWIDTH=${CastMediaDecisions.estimateBandwidth(trimmed)}"
 
                 trimmed.isEmpty() || trimmed.startsWith("#") ->
                     if (trimmed.contains("URI=\"")) rewriteUriAttribute(trimmed, baseUrl, host) else line
@@ -461,9 +500,7 @@ private class ProxyServer(
         }
     }
 
-    private fun encodeTarget(url: String): String =
-        java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(url.toByteArray(Charsets.UTF_8))
+    private fun encodeTarget(url: String): String = encodeUrlToken(url)
 
     private fun guessContentType(url: String): String {
         val path = url.substringBefore('?').substringBefore('#').lowercase()
@@ -488,3 +525,63 @@ private class ProxyServer(
         const val PEEK_BUFFER_BYTES = 512
     }
 }
+
+private const val PD_PREFIX = "/pd/"
+private const val PA_PREFIX = "/pa/"
+
+/**
+ * Rewrites an MPD so the receiver resolves segment URLs through the proxy.
+ *
+ * An MPD-level `<BaseURL>` pointing at `/pd/<dirToken>/` is injected right
+ * after the `<MPD …>` opening tag: relative references (`media="seg.m4s"`,
+ * `$Number$`/`$Representation$` templates included — the receiver expands
+ * them after base resolution) resolve to the proxy and are joined back onto
+ * the upstream directory by the /pd/ route.
+ *
+ * URL-bearing attributes are also rewritten where the BaseURL can't reach:
+ * path-absolute refs (`media="/v/s.m4s"`) become `/pa/<originToken>/v/s.m4s`
+ * so they still hit the proxy; absolute URLs under the same directory are
+ * shortened to relative (this is what keeps templated absolute attrs
+ * working through the proxy); same-origin absolutes go through /pa/.
+ * Foreign-origin URLs stay as-is — the receiver fetches them directly.
+ */
+internal fun rewriteMpdManifest(
+    manifest: String,
+    manifestUrl: String,
+    proxyBase: String,
+): String {
+    val dirBase = manifestUrl.substringBeforeLast('/')
+    val origin = manifestUrl.substringBefore("://") + "://" +
+        manifestUrl.substringAfter("://").substringBefore('/')
+    val dirToken = encodeUrlToken(dirBase)
+    val originToken = encodeUrlToken(origin)
+    // Path-absolute refs resolve against the document-base host root, so the
+    // emitted value must carry the secret prefix itself to reach /pa/.
+    val absPrefix = "/" + proxyBase.substringAfter("://").substringAfter('/') + PA_PREFIX + originToken
+
+    fun proxyAttr(value: String): String = when {
+        value.startsWith("$dirBase/") -> value.substring(dirBase.length + 1)
+        value.startsWith("http://") || value.startsWith("https://") ->
+            if (value.startsWith("$origin/")) {
+                "$absPrefix${value.substring(origin.length)}"
+            } else {
+                value
+            }
+        value.startsWith("/") -> "$absPrefix$value"
+        else -> value
+    }
+
+    val rewritten = MPD_URL_ATTR.replace(manifest) { match ->
+        "${match.groupValues[1]}=${match.groupValues[2]}${proxyAttr(match.groupValues[3])}${match.groupValues[2]}"
+    }
+    return MPD_OPEN_TAG.replace(rewritten) {
+        "${it.value}<BaseURL>$proxyBase$PD_PREFIX$dirToken/</BaseURL>"
+    }
+}
+
+private fun encodeUrlToken(url: String): String =
+    java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(url.toByteArray(Charsets.UTF_8))
+
+private val MPD_OPEN_TAG = Regex("""<MPD(\s[^>]*)?>""")
+private val MPD_URL_ATTR =
+    Regex("""\b(media|initialization|index|sourceURL)\s*=\s*(["'])([^"']*?)\2""")

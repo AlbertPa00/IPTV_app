@@ -11,6 +11,12 @@ data class CastStreamSpec(
     val userAgent: String,
     val referrer: String?,
     val channelTitle: String?,
+    /**
+     * Contenedor declarado por el proveedor (Xtream `container_extension` o
+     * extensión en listas M3U). Cuando coincide con la URL permite saltarse
+     * un sondeo — una conexión menos contra paneles con límite estricto.
+     */
+    val containerExt: String? = null,
 )
 
 data class CastUiState(
@@ -35,6 +41,12 @@ sealed interface CastEvent {
         val playWhenReady: Boolean?,
         /** True = fallo del receptor: avisar y ofrecer "volver al móvil". */
         val showError: Boolean,
+        /**
+         * Posición local a restaurar tras el stop() previo a la
+         * transferencia (se libera la conexión del panel antes de que el
+         * receptor abra la suya). Null = reanudar donde esté el player.
+         */
+        val positionMs: Long? = null,
     ) : CastEvent
 }
 

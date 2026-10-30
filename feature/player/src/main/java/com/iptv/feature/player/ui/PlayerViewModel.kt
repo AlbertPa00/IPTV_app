@@ -478,6 +478,7 @@ class PlayerViewModel @Inject constructor(
                         }
                         restoreLocalPlayback(
                             event.playWhenReady ?: localPlayer?.playWhenReady == true,
+                            event.positionMs,
                         )
                         if (event.showError) {
                             _uiState.update {
@@ -633,6 +634,7 @@ class PlayerViewModel @Inject constructor(
             userAgent = userAgent,
             referrer = referrer,
             channelTitle = channel.name,
+            containerExt = channel.containerExt,
         )
     }
 
@@ -747,11 +749,24 @@ class PlayerViewModel @Inject constructor(
 
 
 
-    private fun restoreLocalPlayback(playWhenReady: Boolean = localPlayer?.playWhenReady == true) {
+    private fun restoreLocalPlayback(
+        playWhenReady: Boolean = localPlayer?.playWhenReady == true,
+        positionMs: Long? = null,
+    ) {
         val local = localPlayer ?: return
         _player.value = local
         mediaSession?.player = local
-        if (local.playbackState == Player.STATE_IDLE) local.prepare()
+        // El controlador detiene el player local al transferir (libera la
+        // conexión del panel): en IDLE se recarga el item — en la posición
+        // guardada si la hay (VOD), o en el borde vivo en directo.
+        if (local.playbackState == Player.STATE_IDLE) {
+            val item = mediaItem
+            if (item != null) {
+                if (positionMs != null) local.setMediaItem(item, positionMs)
+                else local.setMediaItem(item)
+            }
+            local.prepare()
+        }
         local.playWhenReady = playWhenReady
         _uiState.update {
             it.copy(
