@@ -72,6 +72,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -85,6 +86,8 @@ import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
 import com.iptv.core.common.text.formatBytes
 import com.iptv.core.designsystem.components.IptvAsyncImage
+import com.iptv.core.designsystem.tv.LocalIsTv
+import com.iptv.core.designsystem.tv.tvFocusAffordance
 import com.iptv.core.storage.entity.CategoryEntity
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.DownloadEntity
@@ -106,6 +109,8 @@ internal fun CatalogHeader(
     query: String,
     searchHint: String,
     onQueryChange: (String) -> Unit,
+    // Sólo se pinta en TV: el pull-to-refresh no existe con mando.
+    onRefresh: (() -> Unit)? = null,
 ) {
     // En horizontal la cabecera apilada ocupaba casi media pantalla: pasa a
     // una fila — título compacto a la izquierda y el buscador a la derecha.
@@ -141,6 +146,19 @@ internal fun CatalogHeader(
                 onQueryChange = onQueryChange,
                 modifier = Modifier.weight(1f),
             )
+            if (LocalIsTv.current && onRefresh != null) {
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.padding(start = 12.dp)
+                        .tvFocusAffordance(shape = CircleShape, focusedScale = 1.15f),
+                ) {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = stringResource(R.string.catalog_refresh),
+                        tint = MutedText,
+                    )
+                }
+            }
         }
     } else {
         Column(
@@ -241,7 +259,8 @@ internal fun CategoryChip(
             borderColor = GraphiteLight,
             selectedBorderColor = Carmine,
         ),
-        modifier = Modifier.heightIn(min = 48.dp),
+        modifier = Modifier.heightIn(min = 48.dp)
+            .tvFocusAffordance(shape = RoundedCornerShape(20.dp), focusedScale = 1.06f),
     )
 }
 
@@ -263,7 +282,9 @@ internal fun PosterCard(
         // Sin sombra: 5dp de elevación por tarjeta es coste de GPU por frame
         // durante el fling y sobre fondo grafito apenas se aprecia.
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = modifier.aspectRatio(2f / 3f).combinedClickable(
+        modifier = modifier.aspectRatio(2f / 3f)
+            .tvFocusAffordance(shape = RoundedCornerShape(12.dp), focusedScale = 1.04f)
+            .combinedClickable(
             onClick = onClick,
             onLongClick = onLongClick?.let { longClick ->
                 {
@@ -297,7 +318,8 @@ internal fun PosterCard(
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onToggleFavorite()
                 },
-                modifier = Modifier.align(Alignment.TopEnd).size(48.dp),
+                modifier = Modifier.align(Alignment.TopEnd).size(48.dp)
+                    .tvFocusAffordance(shape = CircleShape, focusedScale = 1.15f),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Star,
@@ -886,7 +908,8 @@ internal fun languageLabel(code: String): String {
         else -> null
     }
     if (manual != null) return stringResource(manual)
-    val country = java.util.Locale("", code).getDisplayCountry(java.util.Locale.getDefault())
+    val country = java.util.Locale("", code)
+        .getDisplayCountry(LocalLocale.current.platformLocale)
     return if (country.isBlank() || country.equals(code, ignoreCase = true)) code else "$code · $country"
 }
 

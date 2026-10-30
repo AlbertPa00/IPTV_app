@@ -27,6 +27,7 @@
     <string name="catalog_empty_favorites">Todavía no tienes favoritos. Marca canales y títulos con la estrella.</string>
     <string name="catalog_cd_favorite">Marcar o desmarcar favorito</string>
     <string name="catalog_clear_search">Borrar búsqueda</string>
+    <string name="catalog_refresh">Actualizar</string>
     <string name="catalog_paging_error">No se pudieron cargar más resultados.</string>
     <string name="catalog_favorite_add">Añadir a favoritos</string>
     <string name="catalog_favorite_remove">Quitar de favoritos</string>

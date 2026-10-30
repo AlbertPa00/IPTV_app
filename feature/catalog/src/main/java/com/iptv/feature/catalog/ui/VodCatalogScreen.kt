@@ -128,6 +128,13 @@ fun VodCatalogScreen(
     // alive) no debe capturar el gesto.
     BackHandler(enabled = active && state.grid != null) { viewModel.closeGrid() }
 
+    // El mismo refresco lo dispara el pull-to-refresh táctil o el botón de
+    // la cabecera que aparece en TV (donde no hay gesto de arrastre).
+    val doRefresh = {
+        pulledRefresh = true
+        viewModel.refresh()
+        content.refresh()
+    }
     Column(Modifier.fillMaxSize().background(CinemaBlack)) {
         CatalogHeader(
             title = stringResource(titleFor(kind)),
@@ -135,15 +142,12 @@ fun VodCatalogScreen(
             query = state.query,
             searchHint = stringResource(searchHintFor(kind)),
             onQueryChange = viewModel::onQueryChange,
+            onRefresh = doRefresh,
         )
         PullToRefreshBox(
             isRefreshing = isRefreshing ||
                 (pulledRefresh && content.loadState.refresh is LoadState.Loading),
-            onRefresh = {
-                pulledRefresh = true
-                viewModel.refresh()
-                content.refresh()
-            },
+            onRefresh = doRefresh,
             modifier = Modifier.weight(1f),
         ) {
             when {

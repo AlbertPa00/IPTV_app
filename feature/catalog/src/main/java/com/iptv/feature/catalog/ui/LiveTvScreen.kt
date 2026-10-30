@@ -73,6 +73,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.iptv.core.designsystem.components.EmptyState
 import com.iptv.core.designsystem.components.LoadingState
+import com.iptv.core.designsystem.tv.tvFocusAffordance
 import com.iptv.core.storage.dao.GuideRow
 import com.iptv.core.storage.entity.CategoryEntity
 import com.iptv.core.storage.entity.ChannelEntity
@@ -139,6 +140,13 @@ fun LiveTvScreen(
         }?.name
         else -> null
     }
+    // El mismo refresco lo dispara el pull-to-refresh táctil o el botón de
+    // la cabecera que aparece en TV (donde no hay gesto de arrastre).
+    val doRefresh = {
+        pulledRefresh = true
+        viewModel.refresh()
+        content.refresh()
+    }
     Column(Modifier.fillMaxSize().background(CinemaBlack)) {
         CatalogHeader(
             title = stringResource(R.string.catalog_title_tv),
@@ -147,6 +155,7 @@ fun LiveTvScreen(
             searchHint = scopeName?.let { stringResource(R.string.catalog_search_in, it) }
                 ?: stringResource(R.string.catalog_search_tv),
             onQueryChange = viewModel::onQueryChange,
+            onRefresh = doRefresh,
         )
         if (filters.query.isBlank()) {
             LiveFilterRail(
@@ -185,11 +194,7 @@ fun LiveTvScreen(
         PullToRefreshBox(
             isRefreshing = isRefreshing ||
                 (pulledRefresh && content.loadState.refresh is LoadState.Loading),
-            onRefresh = {
-                pulledRefresh = true
-                viewModel.refresh()
-                content.refresh()
-            },
+            onRefresh = doRefresh,
             modifier = Modifier.weight(1f),
         ) {
             when {
@@ -450,6 +455,7 @@ private fun LiveChannelRow(
             shape = RoundedCornerShape(12.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = elevation),
             modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp)
+                .tvFocusAffordance(shape = RoundedCornerShape(12.dp), focusedScale = 1.02f)
                 .then(dragModifier)
                 .combinedClickable(
                     onClick = onClick,
@@ -489,7 +495,8 @@ private fun LiveChannelRow(
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onToggleFavorite()
                 },
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier.size(48.dp)
+                    .tvFocusAffordance(shape = CircleShape, focusedScale = 1.15f),
             ) {
                 Icon(
                     Icons.Filled.Star,

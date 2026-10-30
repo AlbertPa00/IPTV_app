@@ -58,6 +58,33 @@ fun Modifier.tvFocusable(
 }
 
 /**
+ * Affordance de foco puramente visual para elementos que YA son
+ * interactivos (clickable/combinedClickable, chips, botones): dibuja
+ * escala y borde cuando el nodo o su subárbol tiene el foco, sin crear un
+ * segundo objetivo de foco (un `focusable()` extra robaría el CENTER al
+ * clickable real). No-op en táctil.
+ */
+fun Modifier.tvFocusAffordance(
+    shape: Shape = RoundedCornerShape(10.dp),
+    focusedScale: Float = 1.05f,
+): Modifier = composed {
+    var focused by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (focused) focusedScale else 1f,
+        label = "tvAffordanceScale",
+    )
+    val borderColor = MaterialTheme.colorScheme.primary
+    this
+        .scale(scale)
+        .onFocusChanged { focused = it.hasFocus }
+        .border(
+            width = 2.dp,
+            color = if (focused) borderColor else Color.Transparent,
+            shape = shape,
+        )
+}
+
+/**
  * Margen de seguridad de overscan: los televisores recortan los bordes de
  * la señal (~5 %), así que el contenido interactivo de TV no debe tocar
  * el perímetro. Aplicar en la raíz de overlays y pantallas de TV.

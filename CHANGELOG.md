@@ -27,6 +27,9 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 - Desde el menú del reproductor en TV se accede al catálogo (En directo,
   Películas, Series, Guía y Ajustes) con un riel de navegación lateral;
   al elegir contenido se vuelve al vídeo sin abrir otro reproductor.
+- Las pantallas de catálogo muestran borde y escala al enfocar con el
+  mando y ofrecen un botón de actualizar en la cabecera (en TV no existe
+  el gesto de arrastrar para refrescar).
 
 ### Corregido
 - Canales que no llegaban a emitir al Chromecast en cuentas con límite de
