@@ -10,4 +10,5 @@
     <string name="download_channel_desc">Video download progress</string>
     <string name="download_notification_title">Downloading %1$s</string>
     <string name="download_notification_progress_unknown">Download in progress…</string>
+    <string name="download_hls_unsupported">This video can\'t be downloaded: its format (HLS) has no offline download support yet</string>
 </resources>

@@ -601,7 +601,10 @@ private fun downloadStatusLabel(download: DownloadEntity): String = when (downlo
         },
     )
 
-    DownloadStatus.FAILED -> stringResource(R.string.settings_download_state_failed)
+    DownloadStatus.FAILED -> listOfNotNull(
+        stringResource(R.string.settings_download_state_failed),
+        download.errorDetail?.takeIf { it.isNotBlank() },
+    ).joinToString(" — ")
 
     else -> stringResource(R.string.settings_download_state_queued)
 }

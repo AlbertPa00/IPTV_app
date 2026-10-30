@@ -1,12 +1,15 @@
 package com.iptv.app.downloads
 
 import android.content.Context
+import android.os.Handler
+import android.widget.Toast
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.iptv.app.R
 import com.iptv.core.common.download.DownloadController
 import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.network.DEFAULT_USER_AGENT
@@ -50,6 +53,12 @@ class WorkManagerDownloadController @Inject constructor(
         // claro hasta que exista descarga segmentada o remux a mp4.
         val isSegmented =
             DownloadFiles.extensionOf(channel.streamUrl).equals("m3u8", ignoreCase = true)
+        if (isSegmented) {
+            val message = context.getString(R.string.download_hls_unsupported)
+            Handler(context.mainLooper).post {
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+        }
         val now = System.currentTimeMillis()
         val row = DownloadEntity(
             id = existing?.id ?: 0,
@@ -67,7 +76,11 @@ class WorkManagerDownloadController @Inject constructor(
                 ?: sourceDao.findById(channel.sourceId)?.referrer,
             localPath = if (existing?.status == DownloadStatus.DONE) existing.localPath else null,
             status = if (isSegmented) DownloadStatus.FAILED else DownloadStatus.QUEUED,
-            errorDetail = if (isSegmented) "Formato HLS no descargable" else null,
+            errorDetail = if (isSegmented) {
+                context.getString(R.string.download_hls_unsupported)
+            } else {
+                null
+            },
             createdAt = existing?.createdAt ?: now,
             updatedAt = now,
         )

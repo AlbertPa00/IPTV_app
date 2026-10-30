@@ -33,7 +33,8 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   y reintenta una vez con el formato correcto en vez de mostrar error.
 - Las descargas de vídeo en formato HLS (.m3u8) fallan ahora con un motivo
   claro en vez de guardar un fichero inservible que además seguía consumiendo
-  red al reproducirse.
+  red al reproducirse. Al pulsar descargar se muestra un aviso explicando el
+  motivo, y la lista de descargas detalla la causa del error.
 - Emitir al televisor tarda menos al volver a un canal ya enviado: el
   resultado del análisis del stream queda memorizado durante la sesión.
 - Corregido el envío a Chromecast de canales TS en directo en teléfonos de
