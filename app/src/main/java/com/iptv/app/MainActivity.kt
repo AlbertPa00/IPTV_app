@@ -9,6 +9,7 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.iptv.core.common.pip.PipController
 import com.iptv.core.common.platform.isTelevision
 import com.iptv.core.designsystem.theme.IptvTheme
@@ -23,6 +24,10 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var castVolumeKeys: CastVolumeKeyHandler
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Icono de marca durante el arranque; el tema Splash cede a
+        // Theme.IPTVApp cuando Compose dibuja el primer frame (BrandSplash
+        // usa el mismo icono y fondo, así que la continuidad es total).
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {

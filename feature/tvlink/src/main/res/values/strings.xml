@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tvlink_title">Dispositivos</string>
+    <string name="tvlink_remote_section">Controlar otra TV</string>
+    <string name="tvlink_host_section">Este dispositivo</string>
+
+    <string name="tvlink_scanning">Buscando TVs en la red…</string>
+    <string name="tvlink_connecting">Conectando…</string>
+    <string name="tvlink_enter_pin_hint">Introduce el código que muestra la TV</string>
+    <string name="tvlink_fail_unreachable">No se pudo conectar. ¿Está la TV encendida y en la misma red?</string>
+    <string name="tvlink_fail_version">La app de la TV es de otra versión. Actualiza ambas.</string>
+    <string name="tvlink_fail_rejected">La TV rechazó la vinculación.</string>
+
+    <string name="tvlink_pin_field">Código de 6 dígitos</string>
+    <string name="tvlink_pair">Vincular</string>
+    <string name="tvlink_wrong_pin">Código incorrecto</string>
+
+    <string name="tvlink_manual">Introducir IP manualmente</string>
+    <string name="tvlink_manual_host">Dirección IP</string>
+    <string name="tvlink_manual_port">Puerto</string>
+    <string name="tvlink_connect">Conectar</string>
+    <string name="tvlink_cancel">Cancelar</string>
+    <string name="tvlink_paired_offline">Vinculada · no detectada ahora</string>
+    <string name="tvlink_revoke">Quitar</string>
+
+    <string name="tvlink_install_on_tv">Instalar la app en la TV</string>
+    <string name="tvlink_install_on_tv_sub">Envíala a tu Android TV desde Google Play</string>
+    <string name="tvlink_install_title">Instalar en tu Android TV</string>
+    <string name="tvlink_install_body">Al pulsar «Abrir en Google Play» se abre la ficha de la app: usa la flecha junto a «Instalar» (o «Instalar en más dispositivos») y elige tu Android TV. La TV tiene que usar la misma cuenta de Google que este móvil. También puedes buscar la app directamente en la Play Store de la TV.</string>
+    <string name="tvlink_install_open_play">Abrir en Google Play</string>
+
+    <string name="tvlink_connected_to">Controlando %1$s</string>
+    <string name="tvlink_nothing_playing">Nada en reproducción</string>
+    <string name="tvlink_live">En directo</string>
+    <string name="tvlink_sleep">Temporizador de apagado</string>
+    <string name="tvlink_sleep_minutes">%1$d minutos</string>
+    <string name="tvlink_sleep_off">Desactivado</string>
+
+    <string name="tvlink_host_enable">Permitir el control desde otros dispositivos</string>
+    <string name="tvlink_host_on_sub">Servidor de control activo</string>
+    <string name="tvlink_host_off_sub">Nadie puede controlar este dispositivo</string>
+    <string name="tvlink_host_error_sub">No se pudo abrir el servidor de control</string>
+    <string name="tvlink_port_sub">Escuchando en el puerto %1$d</string>
+    <string name="tvlink_show_pin">Vincular un dispositivo</string>
+    <string name="tvlink_pin_hint">Introduce este código en la otra app (caduca en 3 min):</string>
+    <string name="tvlink_pin_hide">Ocultar código</string>
+
+    <string name="tvlink_service_channel">Control entre dispositivos</string>
+    <string name="tvlink_service_title">Control remoto activo</string>
+    <string name="tvlink_service_text">Los dispositivos vinculados pueden controlar esta pantalla</string>
+
+    <string name="tvlink_catalog">Catálogo de la TV</string>
+    <string name="tvlink_catalog_live">En directo</string>
+    <string name="tvlink_catalog_vod">Películas</string>
+    <string name="tvlink_catalog_series">Series</string>
+    <string name="tvlink_catalog_search">Buscar en la TV…</string>
+    <string name="tvlink_catalog_favs">Favoritos</string>
+    <string name="tvlink_catalog_all">Todas</string>
+    <string name="tvlink_catalog_uncat">Sin categoría</string>
+    <string name="tvlink_catalog_empty">Sin resultados en la TV</string>
+    <string name="tvlink_catalog_total">%1$d canales</string>
+    <string name="tvlink_catalog_loading">Cargando…</string>
+    <string name="tvlink_now_playing_tag">Sonando</string>
+    <string name="tvlink_back">Volver</string>
+
+    <string name="tvlink_sources">Fuentes de la TV</string>
+    <string name="tvlink_sources_active">Activa</string>
+    <string name="tvlink_sources_channels">%1$d canales</string>
+    <string name="tvlink_sources_refresh">Resincronizar</string>
+    <string name="tvlink_sources_set_active">Activar</string>
+    <string name="tvlink_sources_add">Añadir fuente</string>
+    <string name="tvlink_sources_sync_mine">Sincronizar mi lista</string>
+    <string name="tvlink_sources_syncing">Sincronizando fuentes…</string>
+    <string name="tvlink_sync_pick_title">Enviar fuentes a la TV</string>
+    <string name="tvlink_sync_pick_hint">Elige qué fuentes copiar</string>
+    <string name="tvlink_sync_local_file">archivo local del móvil (no se puede enviar)</string>
+    <string name="tvlink_sync_none">No hay fuentes en este dispositivo</string>
+    <string name="tvlink_sync_send">Sincronizar</string>
+    <string name="tvlink_sources_empty">La TV no tiene fuentes</string>
+    <string name="tvlink_add_m3u">Lista M3U (URL)</string>
+    <string name="tvlink_add_xtream">Cuenta Xtream</string>
+    <string name="tvlink_add_name">Nombre (opcional)</string>
+    <string name="tvlink_add_url">URL de la lista</string>
+    <string name="tvlink_add_server">Servidor (host:puerto)</string>
+    <string name="tvlink_add_user">Usuario</string>
+    <string name="tvlink_add_pass">Contraseña</string>
+    <string name="tvlink_add_send">Añadir a la TV</string>
+    <string name="tvlink_op_working">Importando… %1$d</string>
+    <string name="tvlink_op_done">Fuente lista en la TV</string>
+    <string name="tvlink_op_failed">Error: %1$s</string>
+    <string name="tvlink_error_invalid_url">URL no válida</string>
+    <string name="tvlink_error_network">Sin conexión con el servidor</string>
+    <string name="tvlink_error_invalid_credentials">Usuario o contraseña incorrectos</string>
+    <string name="tvlink_error_account_inactive">Cuenta inactiva</string>
+    <string name="tvlink_error_empty_playlist">La lista está vacía</string>
+    <string name="tvlink_error_not_found">No encontrado</string>
+    <string name="tvlink_error_unknown">Error desconocido</string>
+</resources>

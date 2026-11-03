@@ -175,6 +175,7 @@ fun PlayerScreen(
     val isInPipMode by viewModel.isInPipMode.collectAsStateWithLifecycle()
     val castVolume by viewModel.castVolume.collectAsStateWithLifecycle()
     val castMuted by viewModel.castMuted.collectAsStateWithLifecycle()
+    val linkedTvName by viewModel.linkedTvName.collectAsStateWithLifecycle()
     val download by viewModel.download.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<DownloadEntity?>(null) }
     var tracksDialogVisible by remember { mutableStateOf(false) }
@@ -774,6 +775,8 @@ fun PlayerScreen(
                         CastRouteButton(
                             contentDescription = stringResource(R.string.player_cast),
                             modifier = Modifier.size(48.dp),
+                            linkedTvName = linkedTvName,
+                            onSendToLinkedTv = viewModel::sendToLinkedTv,
                         )
                         Spacer(Modifier.width(4.dp))
                         if (isLandscape) {

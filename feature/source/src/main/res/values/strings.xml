@@ -139,4 +139,7 @@
     <string name="settings_download_state_downloading">Descargando · %1$s</string>
     <string name="settings_download_state_failed">Error al descargar</string>
     <string name="settings_close">Cerrar</string>
+    <string name="settings_devices_title">Dispositivos</string>
+    <string name="settings_linked_devices">Control remoto y vinculación</string>
+    <string name="settings_linked_devices_sub">Usa este dispositivo como mando o deja que otro lo controle</string>
 </resources>

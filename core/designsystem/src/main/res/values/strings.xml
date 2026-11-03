@@ -4,4 +4,5 @@
     <string name="ds_retry">Reintentar</string>
     <string name="ds_delete">Eliminar</string>
     <string name="ds_cancel">Cancelar</string>
+    <string name="ds_ok">Aceptar</string>
 </resources>

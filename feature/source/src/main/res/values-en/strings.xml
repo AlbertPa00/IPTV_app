@@ -139,4 +139,7 @@
     <string name="settings_download_state_downloading">Downloading · %1$s</string>
     <string name="settings_download_state_failed">Download failed</string>
     <string name="settings_close">Close</string>
+    <string name="settings_devices_title">Devices</string>
+    <string name="settings_linked_devices">Remote control &amp; pairing</string>
+    <string name="settings_linked_devices_sub">Use this device as a remote or let another control it</string>
 </resources>

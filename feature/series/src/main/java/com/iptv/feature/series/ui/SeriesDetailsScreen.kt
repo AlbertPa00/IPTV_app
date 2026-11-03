@@ -36,8 +36,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -55,6 +58,9 @@ import com.iptv.core.designsystem.components.EmptyState
 import com.iptv.core.designsystem.components.IptvAsyncImage
 import com.iptv.core.designsystem.components.ErrorState
 import com.iptv.core.designsystem.components.LoadingState
+import com.iptv.core.designsystem.tv.LocalIsTv
+import com.iptv.core.designsystem.tv.tvFocusAffordance
+import com.iptv.core.designsystem.tv.tvSafeArea
 import com.iptv.core.storage.entity.DownloadEntity
 import com.iptv.core.storage.entity.DownloadStatus
 import com.iptv.feature.series.R
@@ -103,7 +109,12 @@ fun SeriesDetailsScreen(
             )
             else -> ErrorState(stringResource(R.string.series_error_load), onRetry = viewModel::load)
         }
-        IconButton(onClick = onBack, modifier = Modifier.padding(8.dp).background(Color.Black.copy(alpha = .65f))) {
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier.padding(8.dp)
+                .tvFocusAffordance(shape = CircleShape)
+                .background(Color.Black.copy(alpha = .65f), CircleShape),
+        ) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = stringResource(R.string.series_back),
@@ -148,7 +159,13 @@ private fun SeriesContent(
     } else {
         Modifier.fillMaxWidth().aspectRatio(16f / 9f)
     }
-    LazyColumn(Modifier.fillMaxSize()) {
+    // Las zonas enfocables van en items propios del LazyColumn: con todo el
+    // bloque en un único item el D-pad no alcanzaba las filas de episodios
+    // desde el LazyRow de temporadas (y el foco, invisible, parecía no bajar).
+    LazyColumn(
+        Modifier.fillMaxSize()
+            .then(if (LocalIsTv.current) Modifier.tvSafeArea() else Modifier),
+    ) {
         item {
             IptvAsyncImage(
                 model = details.coverUrl,
@@ -168,7 +185,14 @@ private fun SeriesContent(
                     )
                 }
                 details.plot?.let {
-                    Text(it, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
                 }
                 Text(
                     stringResource(R.string.series_seasons),
@@ -177,6 +201,8 @@ private fun SeriesContent(
                     modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
                 )
             }
+        }
+        item {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -192,21 +218,25 @@ private fun SeriesContent(
                             selectedContainerColor = AccentRed,
                             selectedLabelColor = Color.White,
                         ),
+                        modifier = Modifier.tvFocusAffordance(
+                            shape = RoundedCornerShape(20.dp),
+                            focusedScale = 1.06f,
+                        ),
                     )
                 }
-            }
-            selected?.let {
-                Text(
-                    stringResource(R.string.series_episodes, it.number),
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(20.dp),
-                )
             }
         }
         if (selected == null) {
             item { EmptyState(stringResource(R.string.series_no_episodes), Modifier.height(220.dp)) }
         } else {
+            item {
+                Text(
+                    stringResource(R.string.series_episodes, selected.number),
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(20.dp),
+                )
+            }
             items(selected.episodes, key = { it.id }) { episode ->
                 EpisodeRow(
                     episode = episode,
@@ -234,7 +264,9 @@ private fun EpisodeRow(
     val playDescription = stringResource(R.string.series_play_episode, episode.title)
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
+            .clip(RoundedCornerShape(10.dp))
             .background(CardBackground)
+            .tvFocusAffordance(shape = RoundedCornerShape(10.dp))
             .clickable(enabled = !preparing, role = Role.Button) { onPlay(episode) }
             .semantics { contentDescription = playDescription }
             .padding(12.dp),
@@ -281,7 +313,10 @@ private fun DownloadIcon(
             else -> R.string.series_episode_download
         },
     )
-    IconButton(onClick = onClick, modifier = modifier) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.tvFocusAffordance(shape = CircleShape),
+    ) {
         when {
             preparingDownload -> CircularProgressIndicator(
                 Modifier.size(22.dp),

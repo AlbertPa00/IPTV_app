@@ -6,6 +6,61 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 ## [Unreleased]
 
 ### Añadido
+- Botón de pistas (audio, subtítulos y calidad de vídeo) en la barra de
+  controles del reproductor en TV: antes sólo era accesible con la tecla
+  MENU, que muchos mandos de Android TV no tienen; ahora se alcanza con OK.
+- Línea temporal arrastrable en el mando del móvil: con una TV vinculada y
+  contenido bajo demanda en reproducción, la barra de progreso permite
+  saltar a cualquier punto arrastrando, con hora actual y duración total.
+
+### Corregido
+- En la ficha de una serie en TV el mando no bajaba a la lista de
+  episodios: las zonas enfocables van ahora en bloques separados y filas y
+  chips muestran borde y escala al recibir el foco, igual que el resto del
+  catálogo.
+- Fluidez en TV: al mantener una flecha del mando durante la reproducción
+  la pantalla se recomponía por cada pulsación; las pestañas ocultas del
+  menú se seguían midiendo aunque no se vieran; y cada imagen nueva del
+  catálogo lanzaba un fundido. Los tres costes desaparecen — la navegación
+  con mando es más fluida en televisores modestos.
+- Con el diálogo de pistas abierto en TV, las flechas del mando se
+  enrutaban a zapping en vez de a la lista: el diálogo no se podía
+  navegar y las secciones de audio/subtítulos quedaban fuera de vista.
+  Las teclas pasan ahora al diálogo y cada fila muestra borde de foco.
+
+### Añadido
+- "Instalar la app en la TV" en la pantalla de Dispositivos: abre la
+  ficha de Google Play para usar «Instalar en más dispositivos» y enviar
+  la app a la Android TV que comparte la misma cuenta de Google. El
+  acceso sólo aparece en el móvil y cuando la app se instaló desde Play.
+- Intro de marca al abrir la app: la ventana de arranque ya muestra el
+  icono sobre el fondo de cine y una animación breve del logo funde hacia
+  la primera pantalla, en lugar del indicador de carga genérico.
+- Vinculación móvil ↔ TV en la red local: la TV se anuncia sola y el móvil
+  se empareja con un código de 6 dígitos (o por IP manual). Desde el móvil
+  se ve "qué suena" en la TV con su posición y estado sincronizados, y se
+  controla la reproducción: zapping, recall, play/pausa, seek, volumen y
+  temporizador. Handoff en ambas direcciones: "traer al móvil" reanuda en
+  el teléfono lo que veía la TV (con su posición) y "ver en la TV" envía
+  lo que sonaba en el móvil; desde el catálogo, la pulsación larga sobre un
+  canal ofrece "Ver en la TV" para lanzarlo directamente en el televisor.
+  El enlace se mantiene activo con la app en segundo plano (un servicio en
+  primer plano protege el proceso) y los canales se resuelven por su clave
+  de proveedor, así que el handoff funciona aunque móvil y TV tengan el
+  catálogo importado en orden distinto. Funciona también en Fire TV (no
+  usa servicios de Google). Acceso desde Ajustes → Dispositivos o el botón
+  flotante.
+- Catálogo remoto desde el móvil: con la TV vinculada, "Catálogo de la TV"
+  en la pantalla de dispositivos permite navegar por todo el catálogo del
+  televisor —Directo, Películas y Series— con búsqueda, filtros por
+  categoría y favoritos, y lanzar cualquier canal directamente en la TV
+  con un toque; la entrada sonando queda marcada.
+- Gestión de fuentes de la TV desde el móvil: "Fuentes de la TV" lista las
+  fuentes del televisor (activa, número de canales, última sync), permite
+  añadir listas M3U por URL y cuentas Xtream con progreso en vivo,
+  resincronizarlas, activarlas, y "Sincronizar mi lista" permite elegir
+  qué fuentes del móvil (listas M3U por URL y cuentas Xtream) copiar a la
+  TV.
 - Android TV / Google TV / Fire TV: la app aparece en el launcher del
   televisor con su banner y abre directamente reproduciendo el primer
   canal en directo a pantalla completa.
@@ -35,11 +90,47 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
 - En TV la barra de controles ya no desaparece sola mientras un botón
   tiene el foco, y la lista de canales muestra un mensaje cuando un
   filtro no tiene resultados en vez de un spinner eterno.
+- Selector de calidad de vídeo en el diálogo "Pistas": junto a audio y
+  subtítulos hay una sección Vídeo con cada variante del stream
+  (resolución, códec y bitrate), una opción "Automática" para volver a
+  la selección por defecto, y las variantes que el dispositivo no puede
+  decodificar marcadas como "no compatible".
 
 ### Corregido
 - Al abrir una película o episodio tras zapear desde un canal en directo
   no se guardaba el punto de reproducción: ahora se registra igual que
   al abrirlo directamente.
+- Vinculación en TV: el código de 6 dígitos aparecía como un texto más
+  de la lista y pasaba desapercibido; ahora se muestra en un diálogo
+  centrado y con dígitos grandes. Además la propia TV ya no se lista a
+  sí misma entre los dispositivos encontrados (al tocarla pedía su
+  propio código y el teclado saltaba solo), la sección "Este dispositivo"
+  va primero en televisores, y todos los controles de la pantalla de
+  Dispositivos muestran un borde y escala claros al moverse con el mando.
+- En Android TV, bajar con el mando hasta los campos de la cuenta (alta
+  de lista o Xtream) abría el teclado sin pulsar nada: ahora los campos
+  son filas enfocables que sólo abren un diálogo de edición al pulsar OK.
+- El logo de arranque asomaba detrás de pantallas sin fondo propio (se
+  notaba en Ajustes): el fondo de ventana permanente es ahora negro liso
+  y Ajustes pinta su propio fondo, con margen de overscan en TV y borde
+  de foco visible en todas sus filas y botones.
+- Pulsar atrás viendo un canal en TV cerraba la app en lugar de volver
+  al menú: ahora lleva a la pantalla con el riel, y desde ahí sí sale.
+- Al enviar el código de vinculación en el móvil podía no pasar nada si
+  el enlace caía en ese momento: el código se reenvía solo al recuperar
+  la conexión, y el descubrimiento reconoce a la TV aunque su nombre de
+  servicio llegue con el dominio de red pegado.
+- El botón "Vincular" (y todos los botones del mando: zapping, pausa,
+  volumen, traer aquí) no hacía nada en absoluto: el envío por el socket
+  se hacía en el hilo de la interfaz y Android lo bloqueaba; ahora todos
+  los envíos van por el hilo de red.
+- "Transmitir" en el reproductor del móvil iba siempre por Google Cast:
+  con una TV vinculada activa ahora ofrece primero mandar a la app de la
+  TV (mismo canal y posición) o, si se prefiere, un Chromecast normal.
+- Ajustes en TV salía con los textos negros sobre el fondo negro (sólo se
+  veían los subtítulos grises y los interruptores): el marco de la app en
+  televisor ya fija el color de contenido como hace el Scaffold del móvil
+  y toda la pantalla se lee con normalidad.
 
 ### Corregido
 - Canales que no llegaban a emitir al Chromecast en cuentas con límite de
@@ -51,6 +142,8 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   formato correcto.
 - Canales DASH (.mpd) que no se veían al emitir: el proxy reescribe ahora
   las rutas de sus segmentos.
+- El mensaje de error por códec no admitido hablaba de "tu teléfono"
+  también en Android TV: ahora dice "este dispositivo".
 
 ### Mejorado
 - Menos pérdida de calidad al emitir playlists con varias calidades sin
@@ -58,6 +151,12 @@ Cada entrada describe el cambio orientado a usuario, no el detalle técnico.
   Chromecast distinga las variantes en vez de quedarse en la primera.
 - Una conexión menos al proveedor al emitir canales Xtream: cuando la
   cuenta declara el formato del stream se evita un sondeo extra.
+- En streams con varias calidades (HLS/DASH) el reproductor elige ahora
+  la variante de mayor calidad que el dispositivo puede decodificar, en
+  vez de conformarse con una inferior según el ancho de banda medido:
+  los canales 4K se ven a la resolución real que el aparato soporta.
+  Además, si el decodificador elegido falla al arrancar se prueba el
+  siguiente disponible antes de dar el canal por incompatible.
 
 ## [1.3.0] - 2026-10-30
 

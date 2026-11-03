@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ventana de arranque: el icono centrado sobre el negro de marca, de modo
+     que la transición ventana del sistema → Compose no sea un corte a negro
+     seguido de un spinner. En Android 12+ el splash del sistema usa el mismo
+     icono, así que la continuidad visual es completa. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/cinema_black" />
+    <item
+        android:drawable="@drawable/ic_brand_mark"
+        android:gravity="center"
+        android:width="112dp"
+        android:height="112dp" />
+</layer-list>

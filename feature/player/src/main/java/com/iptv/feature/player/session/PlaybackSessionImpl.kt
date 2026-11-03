@@ -269,6 +269,13 @@ class PlaybackSessionImpl @Inject constructor(
         }
     }
 
+    override fun seekTo(positionMs: Long) {
+        val p = _player.value ?: return
+        if (p.duration > 0) {
+            p.seekTo(positionMs.coerceIn(0L, p.duration))
+        }
+    }
+
     override fun setSleepTimer(minutes: Int?) {
         sleepTimerJob?.cancel()
         sleepTimerJob = null
@@ -402,6 +409,7 @@ class PlaybackSessionImpl @Inject constructor(
         // a FileDataSource (descargas) y http(s):// a la fábrica HTTP de arriba.
         val renderersFactory = DefaultRenderersFactory(appContext)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setEnableDecoderFallback(true)
         // ForStreaming: las descargas (file://) mantienen sus defaults rápidos;
         // sólo se toca el stream por red.
         val loadControl = DefaultLoadControl.Builder()
@@ -423,6 +431,9 @@ class PlaybackSessionImpl @Inject constructor(
                 // del Wi-Fi corte el stream con pantalla dormida o señal justa.
                 it.setWakeMode(C.WAKE_MODE_NETWORK)
                 it.setHandleAudioBecomingNoisy(true)
+                it.trackSelectionParameters = it.trackSelectionParameters.buildUpon()
+                    .setForceHighestSupportedBitrate(true)
+                    .build()
                 it.addListener(localListener)
             }
         localPlayer = newLocalPlayer

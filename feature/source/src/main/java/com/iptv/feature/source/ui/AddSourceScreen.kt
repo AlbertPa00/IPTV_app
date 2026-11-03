@@ -25,7 +25,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -44,6 +43,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.iptv.core.designsystem.tv.TvTextField
 import com.iptv.feature.source.R
 import com.iptv.feature.source.domain.SyncStep
 
@@ -107,24 +107,20 @@ fun AddSourceScreen(
             Spacer(Modifier.height(20.dp))
 
             if (state.tab == AddSourceViewModel.Tab.M3U) {
-                OutlinedTextField(
+                TvTextField(
                     value = state.listName,
                     onValueChange = viewModel::onListNameChange,
-                    label = { Text(stringResource(R.string.source_field_name)) },
-                    singleLine = true,
+                    label = stringResource(R.string.source_field_name),
                     enabled = !state.busy,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
+                TvTextField(
                     value = state.listUrl,
                     onValueChange = viewModel::onListUrlChange,
-                    label = { Text(stringResource(R.string.source_field_url)) },
-                    singleLine = true,
+                    label = stringResource(R.string.source_field_url),
                     enabled = !state.busy,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
-                    modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(20.dp))
                 Button(
@@ -169,31 +165,26 @@ fun AddSourceScreen(
                     Text(stringResource(R.string.source_action_demo))
                 }
             } else {
-                OutlinedTextField(
+                TvTextField(
                     value = state.server,
                     onValueChange = viewModel::onServerChange,
-                    label = { Text(stringResource(R.string.source_field_server)) },
-                    singleLine = true,
+                    label = stringResource(R.string.source_field_server),
                     enabled = !state.busy,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
-                    modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
+                TvTextField(
                     value = state.username,
                     onValueChange = viewModel::onUsernameChange,
-                    label = { Text(stringResource(R.string.source_field_username)) },
-                    singleLine = true,
+                    label = stringResource(R.string.source_field_username),
                     enabled = !state.busy,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
+                TvTextField(
                     value = state.password,
                     onValueChange = viewModel::onPasswordChange,
-                    label = { Text(stringResource(R.string.source_field_password)) },
-                    singleLine = true,
+                    label = stringResource(R.string.source_field_password),
                     enabled = !state.busy,
                     visualTransformation = if (state.showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
@@ -205,17 +196,14 @@ fun AddSourceScreen(
                             )
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
+                TvTextField(
                     value = state.accountName,
                     onValueChange = viewModel::onAccountNameChange,
-                    label = { Text(stringResource(R.string.source_field_name)) },
-                    singleLine = true,
+                    label = stringResource(R.string.source_field_name),
                     enabled = !state.busy,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(20.dp))
                 Button(

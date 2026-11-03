@@ -11,6 +11,8 @@ import com.iptv.core.common.pip.PipController
 import com.iptv.core.common.playback.PlaybackErrorKind
 import com.iptv.core.common.playback.PlaybackSession
 import com.iptv.core.common.prefs.AppPreferences
+import com.iptv.core.common.tvlink.TvLinkClient
+import com.iptv.core.common.tvlink.TvLinkConnection
 import com.iptv.core.storage.dao.CategoryDao
 import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.DownloadDao
@@ -64,6 +66,7 @@ class PlayerViewModel @Inject constructor(
     private val prefs: AppPreferences,
     private val castController: CastController,
     private val playbackSession: PlaybackSession,
+    private val tvLinkClient: TvLinkClient,
 ) : ViewModel() {
 
     data class UiState(
@@ -304,6 +307,23 @@ class PlayerViewModel @Inject constructor(
 
     /** Termina la sesión Cast y limpia el aviso. */
     fun returnToMobile() = playbackSession.returnToMobile()
+
+    // -- TV vinculada (enlace de la app, distinto de Google Cast) ------------
+
+    /** Nombre de la TV vinculada con sesión activa; null sin enlace. */
+    val linkedTvName: StateFlow<String?> = tvLinkClient.connection
+        .map { if (it.state == TvLinkConnection.CONNECTED) it.deviceName else null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** "Transmitir" hacia la TV vinculada: usa el enlace de la app, no el
+     *  protocolo Google Cast — la app de la TV reproduce el mismo canal. */
+    fun sendToLinkedTv() {
+        val channel = _uiState.value.channel ?: return
+        tvLinkClient.remote.value?.play(
+            channel.id,
+            player.value?.currentPosition ?: 0,
+        )
+    }
 
     // -- Plegado del estado de la sesión y del Cast en UiState -------------------
 

@@ -12,6 +12,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.iptv.app.downloads.WorkManagerDownloadController
 import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.common.sync.CatalogSyncScheduler
+import com.iptv.core.common.tvlink.TvLinkHost
 import com.iptv.core.network.DEFAULT_USER_AGENT
 import com.iptv.core.storage.db.LanguageBackfill
 import dagger.hilt.android.HiltAndroidApp
@@ -34,6 +35,9 @@ class IptvApplication : Application(), Configuration.Provider, SingletonImageLoa
     @Inject lateinit var crashReporter: CrashReporter
     @Inject lateinit var languageBackfill: LanguageBackfill
     @Inject lateinit var downloadController: WorkManagerDownloadController
+    // Singleton: al inyectarse arranca el servidor de control si el ajuste
+    // lo permite (auto en TV, opt-in en móviles).
+    @Inject lateinit var tvLinkHost: TvLinkHost
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 

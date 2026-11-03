@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -58,6 +59,7 @@ fun TvControlsOverlay(
     onTogglePlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onOpenRail: () -> Unit,
+    onOpenTracks: () -> Unit,
     onToggleFavorite: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -128,6 +130,11 @@ fun TvControlsOverlay(
                         onClick = { onSeek(SEEK_STEP_MS) },
                     )
                 }
+                TvControlButton(
+                    icon = Icons.Filled.Subtitles,
+                    contentDescription = stringResource(R.string.player_tracks),
+                    onClick = onOpenTracks,
+                )
                 TvControlButton(
                     icon = Icons.AutoMirrored.Filled.List,
                     contentDescription = stringResource(R.string.player_channel_list),

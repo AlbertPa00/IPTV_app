@@ -21,6 +21,8 @@
     <string name="player_playback_interrupted">Reproducción interrumpida</string>
     <string name="player_retry">Reintentar</string>
     <string name="player_cast">Enviar a Chromecast</string>
+    <string name="player_send_to_linked_tv">Enviar a %1$s (app)</string>
+    <string name="player_cast_google">Google Cast (Chromecast)</string>
     <string name="player_cast_device">Chromecast</string>
     <string name="player_casting_to">Reproduciendo en %1$s</string>
     <string name="player_cast_connecting">Enviando a %1$s…</string>
@@ -29,7 +31,7 @@
     <string name="player_error_http">El canal no está disponible ahora (servidor ocupado o enlace caído)</string>
     <string name="player_error_format">El formato del stream no es compatible</string>
     <string name="player_error_cast_format">Chromecast no pudo reproducir este formato directo</string>
-    <string name="player_error_codec">Tu teléfono no admite el códec de este canal</string>
+    <string name="player_error_codec">Este dispositivo no admite el códec de este canal</string>
     <string name="player_error_generic">No se pudo reproducir el canal</string>
     <string name="player_error_channel_missing">El canal ya no existe en tu lista</string>
     <string name="player_error_timeout">El canal no responde; puede estar caído o saturado</string>
@@ -41,6 +43,9 @@
     <string name="player_tracks_empty">Este contenido no expone pistas adicionales</string>
     <string name="player_audio">Audio</string>
     <string name="player_subtitles">Subtítulos</string>
+    <string name="player_video">Vídeo</string>
+    <string name="player_track_auto">Automática</string>
+    <string name="player_track_unsupported">no compatible</string>
     <string name="player_track_off">Desactivar</string>
     <string name="player_aspect_ratio">Relación de aspecto</string>
     <string name="player_more">Más opciones</string>

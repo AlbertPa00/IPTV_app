@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
@@ -63,6 +64,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.common.text.formatBytes
 import com.iptv.core.designsystem.components.ConfirmDeleteDialog
+import com.iptv.core.designsystem.tv.LocalIsTv
+import com.iptv.core.designsystem.tv.tvFocusAffordance
+import com.iptv.core.designsystem.tv.tvSafeArea
 import com.iptv.core.storage.entity.CategoryEntity
 import com.iptv.core.storage.entity.ChannelEntity
 import com.iptv.core.storage.entity.DownloadEntity
@@ -83,6 +87,7 @@ fun SettingsScreen(
     appVersion: String,
     onAddSource: () -> Unit,
     onShowTutorial: () -> Unit,
+    onLinkedDevices: (() -> Unit)? = null,
     sourcesViewModel: SourcesViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -93,9 +98,18 @@ fun SettingsScreen(
     var showPrivacy by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
     var showBufferDialog by remember { mutableStateOf(false) }
+    val isTv = LocalIsTv.current
 
+    // Surface y no sólo Modifier.background: además del fondo opaco fija el
+    // color de contenido, así los Text sin color explícito no dependen del
+    // host — en TV el contenido no va dentro de Scaffold y LocalContentColor
+    // llegaba en negro (texto negro sobre fondo negro).
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(if (isTv) Modifier.tvSafeArea() else Modifier),
+    ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -156,7 +170,10 @@ fun SettingsScreen(
         }
 
         item {
-            Button(onClick = onAddSource, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onAddSource,
+                modifier = Modifier.fillMaxWidth().tvFocusAffordance(),
+            ) {
                 Icon(Icons.Filled.Add, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
                 Text(stringResource(R.string.sources_add))
@@ -213,7 +230,7 @@ fun SettingsScreen(
             item {
                 TextButton(
                     onClick = settingsViewModel::onManageCategoriesClick,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().tvFocusAffordance(),
                 ) {
                     Icon(Icons.Filled.Lock, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
@@ -235,6 +252,7 @@ fun SettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .tvFocusAffordance()
                     .clickable { showBufferDialog = true }
                     .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -267,6 +285,45 @@ fun SettingsScreen(
             )
         }
 
+        if (onLinkedDevices != null) {
+            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+
+            item {
+                Text(
+                    stringResource(R.string.settings_devices_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .tvFocusAffordance()
+                        .clickable { onLinkedDevices() }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.settings_linked_devices),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            stringResource(R.string.settings_linked_devices_sub),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
         item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
 
         item {
@@ -280,6 +337,7 @@ fun SettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .tvFocusAffordance()
                     .clickable { showDownloads = true }
                     .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -366,6 +424,7 @@ fun SettingsScreen(
             )
         }
     }
+    }
 
     // -- Diálogos ---------------------------------------------------------
 
@@ -448,6 +507,7 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .tvFocusAffordance()
                                 .clickable {
                                     settingsViewModel.setBufferProfile(profile)
                                     showBufferDialog = false
@@ -627,7 +687,8 @@ private fun SwitchRow(
     enabled: Boolean = true,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        // El hijo enfocable es el Switch: hasFocus lo ilumina en TV.
+        modifier = Modifier.fillMaxWidth().tvFocusAffordance(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -647,7 +708,13 @@ private fun AboutRow(label: String, value: String? = null, onClick: (() -> Unit)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(
+                if (onClick != null) {
+                    Modifier.tvFocusAffordance().clickable(onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -997,7 +1064,12 @@ private fun SourceCard(
     onDelete: () -> Unit,
 ) {
     val source = row.source
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onActivate)) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .tvFocusAffordance()
+            .clickable(onClick = onActivate),
+    ) {
         Row(
             modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1026,11 +1098,11 @@ private fun SourceCard(
             if (refreshing) {
                 CircularProgressIndicator(Modifier.size(24.dp).semantics { contentDescription = "" })
             } else {
-                IconButton(onClick = onRefresh) {
+                IconButton(onClick = onRefresh, modifier = Modifier.tvFocusAffordance(CircleShape)) {
                     Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.sources_refresh))
                 }
             }
-            IconButton(onClick = onDelete) {
+            IconButton(onClick = onDelete, modifier = Modifier.tvFocusAffordance(CircleShape)) {
                 Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.sources_delete))
             }
         }

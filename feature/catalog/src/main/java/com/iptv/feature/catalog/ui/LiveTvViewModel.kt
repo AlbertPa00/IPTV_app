@@ -11,6 +11,8 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.iptv.core.common.prefs.AppPreferences
 import com.iptv.core.common.text.TextNormalizer
+import com.iptv.core.common.tvlink.TvLinkClient
+import com.iptv.core.common.tvlink.TvLinkConnection
 import com.iptv.core.storage.dao.CategoryDao
 import com.iptv.core.storage.dao.ChannelDao
 import com.iptv.core.storage.dao.GuideRow
@@ -59,6 +61,7 @@ class LiveTvViewModel @Inject constructor(
     private val channelDao: ChannelDao,
     private val programmeDao: ProgrammeDao,
     private val appPreferences: AppPreferences,
+    private val tvLinkClient: TvLinkClient,
     categoryDao: CategoryDao,
     sourceDao: SourceDao,
 ) : ViewModel() {
@@ -98,6 +101,18 @@ class LiveTvViewModel @Inject constructor(
 
     fun markQuickHintSeen() {
         appPreferences.setLiveHintSeen()
+    }
+
+    // -- Enviar a la TV vinculada -----------------------------------------------
+
+    /** Nombre de la TV conectada vía enlace local; null si no hay mando activo. */
+    val remoteTvName: StateFlow<String?> = tvLinkClient.connection
+        .map { conn -> conn.deviceName.takeIf { conn.state == TvLinkConnection.CONNECTED } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Reproduce el canal en la TV vinculada (no toca la sesión local). */
+    fun playOnTv(channelId: Long) {
+        tvLinkClient.remote.value?.play(channelId)
     }
 
     // replay = MAX: al volver a la pestaña se re-emite el último valor sin

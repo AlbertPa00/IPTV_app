@@ -21,6 +21,8 @@
     <string name="player_playback_interrupted">Playback interrupted</string>
     <string name="player_retry">Retry</string>
     <string name="player_cast">Cast to Chromecast</string>
+    <string name="player_send_to_linked_tv">Send to %1$s (app)</string>
+    <string name="player_cast_google">Google Cast (Chromecast)</string>
     <string name="player_cast_device">Chromecast</string>
     <string name="player_casting_to">Playing on %1$s</string>
     <string name="player_cast_connecting">Sending to %1$s…</string>
@@ -29,7 +31,7 @@
     <string name="player_error_http">The channel is unavailable right now (busy server or dead link)</string>
     <string name="player_error_format">The stream format is not supported</string>
     <string name="player_error_cast_format">Chromecast could not play this direct stream format</string>
-    <string name="player_error_codec">Your phone does not support this channel\'s codec</string>
+    <string name="player_error_codec">This device does not support this channel\'s codec</string>
     <string name="player_error_generic">The channel could not be played</string>
     <string name="player_error_channel_missing">This channel no longer exists in your list</string>
     <string name="player_error_timeout">The channel is not responding; it may be down or overloaded</string>
@@ -41,6 +43,9 @@
     <string name="player_tracks_empty">This content exposes no additional tracks</string>
     <string name="player_audio">Audio</string>
     <string name="player_subtitles">Subtitles</string>
+    <string name="player_video">Video</string>
+    <string name="player_track_auto">Auto</string>
+    <string name="player_track_unsupported">not supported</string>
     <string name="player_track_off">Disable</string>
     <string name="player_aspect_ratio">Aspect ratio</string>
     <string name="player_more">More options</string>

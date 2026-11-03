@@ -33,6 +33,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import com.iptv.core.designsystem.tv.tvFocusAffordance
 import com.iptv.feature.player.R
 
 internal val PlayerCarmine: Color
@@ -65,13 +66,15 @@ internal fun TracksDialog(player: Player?, onDismiss: () -> Unit) {
     val groups = tracks?.groups.orEmpty()
     // La misma pista puede aparecer en varios Tracks.Group (variantes HLS,
     // DVB): se fusionan por identidad para no repetir filas ni cabeceras.
+    val videoOptions = remember(tracks) { mergeTrackOptions(groups, C.TRACK_TYPE_VIDEO) }
     val audioOptions = remember(tracks) { mergeTrackOptions(groups, C.TRACK_TYPE_AUDIO) }
     val textOptions = remember(tracks) { mergeTrackOptions(groups, C.TRACK_TYPE_TEXT) }
+    val unsupportedSuffix = stringResource(R.string.player_track_unsupported)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.player_tracks), color = Color.White) },
         text = {
-            if (audioOptions.isEmpty() && textOptions.isEmpty()) {
+            if (videoOptions.isEmpty() && audioOptions.isEmpty() && textOptions.isEmpty()) {
                 Text(
                     stringResource(R.string.player_tracks_empty),
                     color = PlayerMuted,
@@ -79,12 +82,45 @@ internal fun TracksDialog(player: Player?, onDismiss: () -> Unit) {
                 )
             } else {
                 LazyColumn {
+                    if (videoOptions.isNotEmpty()) {
+                        item { TrackSectionHeader(R.string.player_video) }
+                        if (videoOptions.size > 1) {
+                            item {
+                                val overrides =
+                                    player?.trackSelectionParameters?.overrides.orEmpty()
+                                val autoSelected = groups
+                                    .filter { it.type == C.TRACK_TYPE_VIDEO }
+                                    .none { overrides.containsKey(it.mediaTrackGroup) }
+                                TrackRow(
+                                    label = stringResource(R.string.player_track_auto),
+                                    selected = autoSelected,
+                                    onClick = {
+                                        player?.trackSelectionParameters =
+                                            player.trackSelectionParameters.buildUpon()
+                                                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                                                .build()
+                                    },
+                                )
+                            }
+                        }
+                        items(videoOptions.size) { i ->
+                            val option = videoOptions[i]
+                            TrackRow(
+                                label = option.label +
+                                    if (option.enabled) "" else " · $unsupportedSuffix",
+                                selected = option.selected,
+                                enabled = option.enabled,
+                                onClick = { selectTrackOption(player, C.TRACK_TYPE_VIDEO, option) },
+                            )
+                        }
+                    }
                     if (audioOptions.isNotEmpty()) {
                         item { TrackSectionHeader(R.string.player_audio) }
                         items(audioOptions.size) { i ->
                             val option = audioOptions[i]
                             TrackRow(
-                                label = option.label,
+                                label = option.label +
+                                    if (option.enabled) "" else " · $unsupportedSuffix",
                                 selected = option.selected,
                                 enabled = option.enabled,
                                 onClick = { selectTrackOption(player, C.TRACK_TYPE_AUDIO, option) },
@@ -112,7 +148,8 @@ internal fun TracksDialog(player: Player?, onDismiss: () -> Unit) {
                         items(textOptions.size) { i ->
                             val option = textOptions[i]
                             TrackRow(
-                                label = option.label,
+                                label = option.label +
+                                    if (option.enabled) "" else " · $unsupportedSuffix",
                                 selected = option.selected,
                                 enabled = option.enabled,
                                 onClick = { selectTrackOption(player, C.TRACK_TYPE_TEXT, option) },
@@ -150,13 +187,19 @@ private fun mergeTrackOptions(
         for (i in 0 until group.length) {
             val f = group.getTrackFormat(i)
             // El id suele variar entre grupos del mismo stream lógico (HLS/DVB);
-            // la clave es la identidad visible para el usuario.
-            val key = "${f.language}|${f.label}|${f.sampleMimeType}|${f.codecs}|${f.channelCount}|${f.roleFlags}|${f.selectionFlags}"
+            // la clave es la identidad visible para el usuario. En vídeo esa
+            // identidad es resolución+bitrate: sin ellos todas las variantes
+            // de una master HLS colapsarían en una sola fila.
+            val key = if (type == C.TRACK_TYPE_VIDEO) {
+                "${f.width}x${f.height}|${f.bitrate}|${f.sampleMimeType}|${f.codecs}|${f.roleFlags}"
+            } else {
+                "${f.language}|${f.label}|${f.sampleMimeType}|${f.codecs}|${f.channelCount}|${f.roleFlags}|${f.selectionFlags}"
+            }
             val existing = byKey[key]
             if (existing == null) {
                 order++
                 byKey[key] = TrackOption(
-                    label = trackLabel(f, order),
+                    label = if (type == C.TRACK_TYPE_VIDEO) videoLabel(f) else trackLabel(f, order),
                     selected = group.isTrackSelected(i),
                     enabled = group.isTrackSupported(i),
                     targets = listOf(group.mediaTrackGroup to i),
@@ -183,6 +226,27 @@ private fun selectTrackOption(player: Player?, type: Int, option: TrackOption) {
         builder.setOverrideForType(TrackSelectionOverride(group, index))
     }
     player.trackSelectionParameters = builder.build()
+}
+
+/** Etiqueta de variante de vídeo: "2160p · HEVC · 8.0 Mbps". */
+private fun videoLabel(f: Format): String {
+    val res = if (f.height > 0) "${f.height}p" else f.label ?: "?"
+    val codec = f.codecs?.substringBefore('.')?.let {
+        when {
+            it.startsWith("hev") || it.startsWith("hvc") -> "HEVC"
+            it.startsWith("avc") -> "H.264"
+            it.startsWith("av01") -> "AV1"
+            it.startsWith("vp9") || it.startsWith("vp09") -> "VP9"
+            it == "mp4v" -> "MPEG-4"
+            else -> it.uppercase()
+        }
+    }
+    val mbps = if (f.bitrate > 0) {
+        String.format(java.util.Locale.US, "%.1f Mbps", f.bitrate / 1_000_000f)
+    } else {
+        null
+    }
+    return listOfNotNull(res, codec, mbps).joinToString(" · ")
 }
 
 /** Etiqueta legible: evita IDs tipo "1/8219" (DVB) cuando hay idioma. */
@@ -278,6 +342,7 @@ private fun TrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .tvFocusAffordance()
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

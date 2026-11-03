@@ -22,6 +22,9 @@ interface SourceDao {
     @Query("SELECT * FROM sources WHERE isActive = 1 LIMIT 1")
     fun observeActive(): Flow<SourceEntity?>
 
+    @Query("SELECT * FROM sources WHERE isActive = 1 LIMIT 1")
+    suspend fun findActive(): SourceEntity?
+
     @Query("SELECT COUNT(*) FROM sources")
     fun observeCount(): Flow<Int>
 

@@ -2,15 +2,19 @@ package com.iptv.app
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ConnectedTv
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
@@ -23,6 +27,8 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -49,7 +55,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.NavType
-import com.iptv.core.designsystem.components.LoadingState
 import com.iptv.core.designsystem.tv.LocalIsTv
 import com.iptv.core.designsystem.tv.tvSafeArea
 import com.iptv.feature.catalog.ui.ContentKind
@@ -65,6 +70,15 @@ import com.iptv.feature.series.ui.SeriesDetailsScreen
 import com.iptv.feature.source.ui.AddSourceScreen
 import com.iptv.feature.source.ui.OnboardingScreen
 import com.iptv.feature.source.ui.SettingsScreen
+import com.iptv.feature.tvlink.ui.TvLinkScreen
+import kotlinx.coroutines.delay
+
+// Intro de marca: mínimo en pantalla para que el logo se perciba (en TV va
+// más corto porque la shell es player-first) y duración del fundido hacia
+// la primera pantalla.
+private const val SPLASH_MIN_MS = 550L
+private const val SPLASH_MIN_TV_MS = 350L
+private const val SPLASH_FADE_MS = 260
 
 private object Routes {
     const val Onboarding = "onboarding"
@@ -80,6 +94,7 @@ private object Routes {
     const val Player = "player/{channelId}"
     const val SeriesDetails = "series-detail/{seriesId}"
     const val MovieDetails = "movie/{channelId}"
+    const val TvLink = "tvlink"
 
     fun player(channelId: Long) = "player/$channelId"
     fun seriesDetails(seriesId: Long) = "series-detail/$seriesId"
@@ -134,15 +149,35 @@ fun IptvApp(
         }
     }
 
-    when (val route = startRoute) {
-        null -> LoadingState()
-        else -> CompositionLocalProvider(LocalIsTv provides isTv) {
-            AppNavigation(
-                navController = navController,
-                startDestination = route,
-                isTv = isTv,
-                onOnboardingComplete = viewModel::completeOnboarding,
-            )
+    // La intro se mantiene un mínimo aunque el destino resuelva antes; la
+    // salida funde el logo hacia la primera pantalla sin corte a negro.
+    var splashElapsed by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(if (isTv) SPLASH_MIN_TV_MS else SPLASH_MIN_MS)
+        splashElapsed = true
+    }
+
+    AnimatedContent(
+        targetState = startRoute == null || !splashElapsed,
+        transitionSpec = {
+            fadeIn(tween(SPLASH_FADE_MS)) togetherWith
+                (fadeOut(tween(SPLASH_FADE_MS)) +
+                    scaleOut(targetScale = 1.05f, animationSpec = tween(SPLASH_FADE_MS)))
+        },
+        label = "brandSplash",
+    ) { splash ->
+        when {
+            splash -> BrandSplash()
+            else -> startRoute?.let { route ->
+                CompositionLocalProvider(LocalIsTv provides isTv) {
+                    AppNavigation(
+                        navController = navController,
+                        startDestination = route,
+                        isTv = isTv,
+                        onOnboardingComplete = viewModel::completeOnboarding,
+                    )
+                }
+            }
         }
     }
 }
@@ -163,6 +198,16 @@ private fun AppNavigation(
     // En TV reproducir no navega: el reproductor es la raíz y un segundo
     // player/{id} apilado tendría otro ExoPlayer sonando a la vez. Se
     // desapila hasta él y el canal llega por savedStateHandle.
+    val tvPlayerExit: () -> Unit = {
+        if (navController.previousBackStackEntry != null) {
+            navController.popBackStack()
+        } else {
+            // Reproductor raíz: atrás lleva al menú, no cierra la app.
+            // OJO: no usar popBackStack() para el chequeo — en la raíz
+            // también desapila y NavController cierra al vaciar la pila.
+            navController.navigate(Routes.Home)
+        }
+    }
     val playChannel: (Long) -> Unit = { channelId ->
         if (isTv && navController.popBackStack(Routes.Player, inclusive = false)) {
             navController.currentBackStackEntry
@@ -225,6 +270,17 @@ private fun AppNavigation(
                 )
             }
             composable(Routes.Home) {
+                if (isTv) {
+                    // En TV el "menú" es el tope de la pila: atrás sale de
+                    // la app. Handler por destino — se registra al componer
+                    // Home, después del callback interno de NavHost, así que
+                    // siempre gana la pulsación. El press que nos trajo del
+                    // reproductor ya se despachó entero en aquella pantalla
+                    // (la tecla BACK nunca la consume el view path), así que
+                    // este handler sólo ve presses nuevos.
+                    val activity = LocalActivity.current
+                    BackHandler { activity?.finish() }
+                }
                 HomeTabs(
                     selected = selectedTab,
                     onPlayChannel = playChannel,
@@ -232,6 +288,7 @@ private fun AppNavigation(
                     onSeriesDetails = { navController.navigate(Routes.seriesDetails(it)) },
                     onAddSource = { navController.navigate(Routes.AddSource) },
                     onShowTutorial = { navController.navigate(Routes.Onboarding) },
+                    onLinkedDevices = { navController.navigate(Routes.TvLink) },
                 )
             }
             composable(
@@ -239,13 +296,10 @@ private fun AppNavigation(
                 arguments = listOf(navArgument("channelId") { type = NavType.LongType }),
             ) { playerEntry ->
                 if (isTv) {
-                    // En TV el reproductor es la raíz: si no hay nada que
-                    // desapilar, atrás sale de la app.
                     val activity = LocalActivity.current
                     TvPlayerScreen(
-                        onExit = {
-                            if (!navController.popBackStack()) activity?.finish()
-                        },
+                        onExit = tvPlayerExit,
+                        onQuit = { activity?.finish() },
                         onBrowse = { navController.navigate(Routes.Home) },
                         savedStateHandle = playerEntry.savedStateHandle,
                     )
@@ -271,23 +325,50 @@ private fun AppNavigation(
                     onPlay = playChannel,
                 )
             }
+            composable(Routes.TvLink) {
+                TvLinkScreen(
+                    onBack = { navController.popBackStack() },
+                    onPlayLocal = playChannel,
+                )
+            }
         }
     }
 
     if (isTv) {
         // Riel lateral en vez de barra inferior: la navegación por pestañas
         // vive a la izquierda, patrón de las apps de TV (y sólo en Home).
-        Row(Modifier.fillMaxSize()) {
-            if (showBottomBar) {
-                TvSideRail(selected = selectedTab, onSelect = { selectedTab = it })
+        // La Surface hace lo que el Scaffold del móvil: fija el fondo y, lo
+        // importante, el color de contenido — sin ella LocalContentColor
+        // queda en su valor por defecto (negro) y todo Text sin color
+        // explícito sale negro sobre negro (la pestaña Ajustes entera).
+        Surface(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxSize()) {
+                if (showBottomBar) {
+                    TvSideRail(selected = selectedTab, onSelect = { selectedTab = it })
+                }
+                Box(Modifier.weight(1f)) { host(Modifier.fillMaxSize()) }
             }
-            Box(Modifier.weight(1f)) { host(Modifier.fillMaxSize()) }
         }
     } else {
         Scaffold(
             bottomBar = {
                 if (showBottomBar) {
                     MainBottomBar(selected = selectedTab, onSelect = { selectedTab = it })
+                }
+            },
+            floatingActionButton = {
+                // Atajo al mando/vinculación: un toque desde cualquier pestaña.
+                if (showBottomBar) {
+                    SmallFloatingActionButton(
+                        onClick = { navController.navigate(Routes.TvLink) },
+                    ) {
+                        Icon(
+                            Icons.Filled.ConnectedTv,
+                            contentDescription = stringResource(
+                                com.iptv.feature.tvlink.R.string.tvlink_remote_section,
+                            ),
+                        )
+                    }
                 }
             },
         ) { innerPadding ->
@@ -311,6 +392,7 @@ private fun HomeTabs(
     onSeriesDetails: (Long) -> Unit,
     onAddSource: () -> Unit,
     onShowTutorial: () -> Unit,
+    onLinkedDevices: () -> Unit,
 ) {
     val visited = remember { mutableStateSetOf<String>() }
     SideEffect { visited += selected }
@@ -357,6 +439,7 @@ private fun HomeTabs(
                             appVersion = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                             onAddSource = onAddSource,
                             onShowTutorial = onShowTutorial,
+                            onLinkedDevices = onLinkedDevices,
                         )
                     }
                 }
@@ -365,12 +448,18 @@ private fun HomeTabs(
     }
 }
 
-/** Mide y mantiene compuesto el contenido, pero lo coloca muy lejos a la
- *  derecha cuando no es la pestaña activa: ni se dibuja ni recibe toques. */
+/** Mantiene compuesta la pestaña sin trabajo de layout cuando está oculta:
+ *  sin `measure` sus LazyColumn no componen ni recolocan items (antes cada
+ *  pestaña en segundo plano se medía y colocaba fuera de pantalla igual —
+ *  coste de frame por pestaña visitada en dispositivos justos como la TV).
+ *  El estado (scroll, ViewModels, collectors) vive en la composición y se
+ *  retoma intacto al volver a la pestaña. */
 private fun Modifier.keepComposed(visible: Boolean) = layout { measurable, constraints ->
-    val placeable = measurable.measure(constraints)
-    layout(placeable.width, placeable.height) {
-        if (visible) placeable.place(0, 0) else placeable.place(1_000_000, 0)
+    if (visible) {
+        val placeable = measurable.measure(constraints)
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    } else {
+        layout(0, 0) {}
     }
 }
 

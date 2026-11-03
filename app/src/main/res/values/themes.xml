@@ -3,8 +3,22 @@
     <style name="Theme.IPTVApp" parent="Theme.AppCompat.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:colorBackground">#FF08090B</item>
-        <item name="android:windowBackground">@android:color/black</item>
+        <!-- Fondo de ventana permanente: negro liso. Antes era el splash con
+             el logo centrado, que asomaba detrás de cualquier pantalla sin
+             fondo opaco (Ajustes, Dispositivos…). El logo lo dibuja el splash
+             del sistema y BrandSplash (Compose), ambos con fondo propio. -->
+        <item name="android:windowBackground">@color/cinema_black</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowActionModeOverlay">true</item>
+    </style>
+
+    <!-- Tema de la ventana de arranque (Android 12+ nativo, backport en
+         anteriores): icono de marca sobre el negro de cine mientras Compose
+         dibuja el primer frame; luego cede a Theme.IPTVApp sin cambio de
+         color de fondo. -->
+    <style name="Theme.IPTVApp.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/cinema_black</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_brand_mark</item>
+        <item name="postSplashScreenTheme">@style/Theme.IPTVApp</item>
     </style>
 </resources>

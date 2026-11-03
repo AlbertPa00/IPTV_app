@@ -13,6 +13,9 @@ data class NowPlaying(
     val logoUrl: String?,
     val isLive: Boolean,
     val isFavorite: Boolean,
+    /** Clave estable (externalId) cuando la sesión viene de un host remoto
+     *  por tv-link: el mando marca "sonando" en su catálogo espejo. */
+    val channelKey: String? = null,
 )
 
 /** Clasificación de fallo de reproducción: la capa de presentación la
@@ -72,6 +75,9 @@ interface PlaybackSession {
 
     /** Seek relativo en contenido no en directo. */
     fun seekBy(deltaMs: Long)
+
+    /** Seek absoluto en contenido no en directo (línea temporal arrastrable). */
+    fun seekTo(positionMs: Long)
 
     /** Programa la pausa en [minutes] minutos; null la cancela. */
     fun setSleepTimer(minutes: Int?)

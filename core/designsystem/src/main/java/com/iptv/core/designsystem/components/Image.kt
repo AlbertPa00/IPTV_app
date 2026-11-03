@@ -11,6 +11,7 @@ import coil3.compose.AsyncImagePainter
 import coil3.decode.BitmapFactoryDecoder
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.iptv.core.designsystem.tv.LocalIsTv
 
 /**
  * Imagen de red con el tratamiento común de la app: fundido de entrada y
@@ -22,7 +23,8 @@ import coil3.request.crossfade
  *
  * [fadeIn] desactiva el fundido de entrada: en parrillas densas cada póster
  * que entra durante un fling lanzaba una transición alfa simultánea — jank
- * medible. En héroes y fichas sigue activo.
+ * medible. En héroes y fichas sigue activo. En TV se ignora siempre: cada
+ * fila que se revela al navegar con el mando lanzaba el mismo coste.
  *
  * [animated] = false decodifica sólo el primer fotograma de GIF/WebP
  * animados: un póster animado re-decodifica a ~10fps y cada tick invalida
@@ -40,11 +42,12 @@ fun IptvAsyncImage(
     animated: Boolean = false,
 ) {
     val placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceVariant)
+    val fade = fadeIn && !LocalIsTv.current
     AsyncImage(
         model = ImageRequest.Builder(LocalContext.current)
             .data(model)
             .apply {
-                if (fadeIn) crossfade(true)
+                if (fade) crossfade(true)
                 if (!animated) decoderFactory(BitmapFactoryDecoder.Factory())
             }
             .build(),

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -45,7 +46,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -69,6 +73,9 @@ import com.iptv.feature.player.ui.PlayerViewModel
 import com.iptv.feature.player.ui.SleepTimerDialog
 import com.iptv.feature.player.ui.TracksDialog
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val CONTROLS_HIDE_DELAY_MS = 8_000L
 private const val INFO_HIDE_DELAY_MS = 4_500L
@@ -94,7 +101,10 @@ const val PENDING_TV_CHANNEL_KEY = "tv_pending_channel"
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun TvPlayerScreen(
+    /** BACK sin overlays: el nivel de navegación decide (ir al menú). */
     onExit: () -> Unit,
+    /** "Salir" del menú contextual: cerrar la app de verdad. */
+    onQuit: () -> Unit,
     onBrowse: () -> Unit,
     savedStateHandle: SavedStateHandle? = null,
     viewModel: PlayerViewModel = hiltViewModel(),
@@ -128,7 +138,11 @@ fun TvPlayerScreen(
     var overlay by remember { mutableStateOf(TvOverlay.NONE) }
     var osdDigits by remember { mutableStateOf("") }
     var menuDialog by remember { mutableStateOf<TvMenuDialog?>(null) }
-    var lastInteractionAt by remember { mutableStateOf(System.currentTimeMillis()) }
+    // Latido de interacción como Flow, no como estado: cada tecla enrutada
+    // lo emite sin recomponer. Como `var by remember` su lectura en el
+    // LaunchedEffect recomponía la pantalla entera por pulsación — jank
+    // al mantener una flecha sobre la superficie de vídeo.
+    val interactions = remember { MutableStateFlow(System.currentTimeMillis()) }
     // Un panel enfocable no se auto-oculta mientras algo dentro lo tenga.
     var overlayFocused by remember { mutableStateOf(false) }
 
@@ -208,24 +222,50 @@ fun TvPlayerScreen(
         hasChannelList = hasChannelList,
     )
 
+    // En Android moderno (API 35+, "predictive back") la tecla BACK del
+    // mando no viaja por onPreviewKeyEvent: llega al OnBackPressedDispatcher
+    // y cerraría la actividad directamente. Este handler le da la misma
+    // semántica que el router de teclas en todas las versiones: con overlay
+    // abierto lo cierra; sin overlay sale de la reproducción.
+    BackHandler {
+        handleAction(
+            if (overlay != TvOverlay.NONE) TvAction.CloseOverlay else TvAction.Back,
+        )
+    }
+
+    // Sumidero de foco: sin ningún nodo enfocado, las teclas del mando no
+    // llegan a onPreviewKeyEvent (Android sólo las despacha por la cadena
+    // de foco). La raíz retiene el foco cuando ningún overlay lo reclama;
+    // al abrirse un overlay su propio FocusRequester se lo lleva, y al
+    // cerrarse éste lo recupera.
+    val rootFocus = remember { FocusRequester() }
+    LaunchedEffect(overlay) {
+        if (overlay == TvOverlay.NONE) rootFocus.requestFocus()
+    }
+
     // Auto-ocultado: los controles se repliegan pasado el delay desde la
     // última tecla; la tarjeta info desaparece sola; el OSD confirma solo.
-    LaunchedEffect(overlay, lastInteractionAt) {
+    LaunchedEffect(overlay) {
+        val hideMs = when (overlay) {
+            TvOverlay.CONTROLS -> CONTROLS_HIDE_DELAY_MS
+            TvOverlay.INFO -> INFO_HIDE_DELAY_MS
+            TvOverlay.NUMBER_OSD -> OSD_CONFIRM_DELAY_MS
+            else -> return@LaunchedEffect
+        }
+        // Cada latido reinicia la cuenta; expira sólo si nadie toca el mando.
+        var since = interactions.value
+        while (true) {
+            val wait = hideMs - (System.currentTimeMillis() - since)
+            if (wait <= 0) break
+            since = withTimeoutOrNull(wait) { interactions.first { it > since } }
+                ?: break
+        }
         when (overlay) {
-            TvOverlay.CONTROLS -> {
-                delay(CONTROLS_HIDE_DELAY_MS)
-                // Con un botón enfocado la barra no desaparece bajo el
-                // foco del usuario: se repliega al perderlo o con BACK.
-                if (!overlayFocused) overlay = TvOverlay.NONE
-            }
-            TvOverlay.INFO -> {
-                delay(INFO_HIDE_DELAY_MS)
-                if (overlay == TvOverlay.INFO) overlay = TvOverlay.NONE
-            }
-            TvOverlay.NUMBER_OSD -> {
-                delay(OSD_CONFIRM_DELAY_MS)
-                if (overlay == TvOverlay.NUMBER_OSD) confirmDigits()
-            }
+            // Con un botón enfocado la barra no desaparece bajo el foco del
+            // usuario: se repliega al perderlo o con BACK.
+            TvOverlay.CONTROLS -> if (!overlayFocused) overlay = TvOverlay.NONE
+            TvOverlay.INFO -> if (overlay == TvOverlay.INFO) overlay = TvOverlay.NONE
+            TvOverlay.NUMBER_OSD -> if (overlay == TvOverlay.NUMBER_OSD) confirmDigits()
             else -> Unit
         }
     }
@@ -243,7 +283,23 @@ fun TvPlayerScreen(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .focusRequester(rootFocus)
+            .focusable()
             .onPreviewKeyEvent { event ->
+                // Con un diálogo modal abierto (pistas, sleep timer…) las
+                // flechas son suyas: sin este guardia, overlay==NONE las
+                // ruteaba a zapping y el diálogo no se podía navegar.
+                if (menuDialog != null) return@onPreviewKeyEvent false
+                // BACK nunca se consume aquí: si el view path lo toma en
+                // DOWN y navegamos fuera, su KEY_UP cae al dispatcher con
+                // la pantalla en transición y cierra la app (visto en
+                // emulador). Toda la tecla va al OnBackPressedDispatcher —
+                // ver el BackHandler más abajo con la misma semántica.
+                if (event.nativeKeyEvent.keyCode ==
+                    android.view.KeyEvent.KEYCODE_BACK
+                ) {
+                    return@onPreviewKeyEvent false
+                }
                 val tvKey = TvKey(
                     code = event.nativeKeyEvent.keyCode,
                     action = if (event.type == KeyEventType.KeyDown) {
@@ -255,7 +311,7 @@ fun TvPlayerScreen(
                 )
                 when (val result = routeTvKey(tvKey, ctx)) {
                     is TvKeyResult.Perform -> {
-                        lastInteractionAt = System.currentTimeMillis()
+                        interactions.value = System.currentTimeMillis()
                         handleAction(result.action)
                         true
                     }
@@ -443,7 +499,7 @@ fun TvPlayerScreen(
                     menuDialog = TvMenuDialog.SLEEP
                     overlay = TvOverlay.NONE
                 },
-                onExit = onExit,
+                onExit = onQuit,
             )
         }
 
@@ -479,6 +535,10 @@ fun TvPlayerScreen(
                 onTogglePlayPause = { handleAction(TvAction.TogglePlayPause) },
                 onSeek = { delta -> handleAction(TvAction.SeekBy(delta)) },
                 onOpenRail = { handleAction(TvAction.OpenRail) },
+                onOpenTracks = {
+                    menuDialog = TvMenuDialog.TRACKS
+                    overlay = TvOverlay.NONE
+                },
                 onToggleFavorite = viewModel::toggleFavorite,
                 modifier = Modifier.onFocusChanged { overlayFocused = it.hasFocus },
             )

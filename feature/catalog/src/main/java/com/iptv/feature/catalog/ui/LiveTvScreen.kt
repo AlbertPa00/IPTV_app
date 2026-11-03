@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ConnectedTv
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
@@ -107,6 +108,7 @@ fun LiveTvScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val content = viewModel.channels.collectAsLazyPagingItems()
     val reorderScope by viewModel.reorderScope.collectAsStateWithLifecycle()
+    val remoteTvName by viewModel.remoteTvName.collectAsStateWithLifecycle()
     var showLanguagePicker by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<ChannelEntity?>(null) }
@@ -223,6 +225,8 @@ fun LiveTvScreen(
                     onRenameChannel = { channel -> renameTarget = channel },
                     onRestoreName = viewModel::restoreChannelName,
                     onHideChannel = viewModel::hideChannel,
+                    remoteTvName = remoteTvName,
+                    onPlayOnTv = viewModel::playOnTv,
                 )
             }
             renameTarget?.let { target ->
@@ -348,6 +352,8 @@ private fun ChannelList(
     onRenameChannel: (ChannelEntity) -> Unit,
     onRestoreName: (ChannelEntity) -> Unit,
     onHideChannel: (ChannelEntity) -> Unit,
+    remoteTvName: String?,
+    onPlayOnTv: (Long) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
     val lazyListState = rememberLazyListState()
@@ -405,6 +411,8 @@ private fun ChannelList(
                         onRename = { onRenameChannel(channel) },
                         onRestoreName = { onRestoreName(channel) },
                         onHide = { onHideChannel(channel) },
+                        remoteTvName = remoteTvName,
+                        onPlayOnTv = { onPlayOnTv(channel.id) },
                     )
                 }
             }
@@ -426,6 +434,8 @@ private fun ChannelList(
                         onRename = { onRenameChannel(channel) },
                         onRestoreName = { onRestoreName(channel) },
                         onHide = { onHideChannel(channel) },
+                        remoteTvName = remoteTvName,
+                        onPlayOnTv = { onPlayOnTv(channel.id) },
                     )
                 }
             }
@@ -447,6 +457,8 @@ private fun LiveChannelRow(
     onRename: () -> Unit,
     onRestoreName: () -> Unit,
     onHide: () -> Unit,
+    remoteTvName: String?,
+    onPlayOnTv: () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
     var menuOpen by remember { mutableStateOf(false) }
@@ -529,6 +541,17 @@ private fun LiveChannelRow(
         // se abre desde ⋮; fuera, con pulsación larga sobre la tarjeta.
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             fun dismissAnd(action: () -> Unit): () -> Unit = { menuOpen = false; action() }
+            // Con una TV vinculada y conectada se ofrece enviar el canal allí
+            // sin dejar de navegar el catálogo local.
+            if (remoteTvName != null) {
+                DropdownMenuItem(
+                    text = {
+                        Text(stringResource(R.string.catalog_channel_play_on_tv, remoteTvName))
+                    },
+                    leadingIcon = { Icon(Icons.Filled.ConnectedTv, contentDescription = null) },
+                    onClick = dismissAnd(onPlayOnTv),
+                )
+            }
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.catalog_channel_rename)) },
                 leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },

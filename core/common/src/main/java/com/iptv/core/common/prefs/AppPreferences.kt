@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.channels.awaitClose
@@ -171,6 +172,59 @@ class AppPreferences @Inject constructor(
         prefs.edit().putInt(KEY_LANG_TAG_VERSION, version).apply()
     }
 
+    // -- Vinculación móvil ↔ TV (tvlink) --------------------------------------
+
+    /**
+     * Permite controlar este dispositivo desde otro en la LAN. Tri-estado:
+     * null = automático (activo en TV, inactivo en móviles); Boolean = el
+     * usuario lo fijó explícitamente.
+     */
+    val tvLinkHostEnabled: Flow<Boolean?> = callbackFlow {
+        trySend(tvLinkHostEnabledRaw())
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changed ->
+            if (changed == KEY_TV_LINK_HOST) trySend(tvLinkHostEnabledRaw())
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    fun setTvLinkHostEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_TV_LINK_HOST, enabled).apply()
+    }
+
+    /** Resolución del tri-estado: sin preferencia guardada → [isTv]. */
+    fun isTvLinkHostEnabled(isTv: Boolean): Boolean =
+        tvLinkHostEnabledRaw() ?: isTv
+
+    private fun tvLinkHostEnabledRaw(): Boolean? =
+        if (prefs.contains(KEY_TV_LINK_HOST)) prefs.getBoolean(KEY_TV_LINK_HOST, false) else null
+
+    /** Id estable de ESTE dispositivo (lo usan el host y el cliente). */
+    fun tvLinkDeviceId(): String {
+        var id = prefs.getString(KEY_TV_LINK_DEVICE_ID, null)
+        if (id == null) {
+            id = UUID.randomUUID().toString().replace("-", "").take(12)
+            prefs.edit().putString(KEY_TV_LINK_DEVICE_ID, id).apply()
+        }
+        return id
+    }
+
+    /** TVs conocidas por el cliente: registros "deviceId|name|token|host|port". */
+    fun tvLinkKnownTvs(): Set<String> =
+        prefs.getStringSet(KEY_TV_LINK_TVS, emptySet()).orEmpty()
+
+    fun setTvLinkKnownTvs(records: Set<String>) {
+        prefs.edit().putStringSet(KEY_TV_LINK_TVS, records).apply()
+    }
+
+    /** Clientes vinculados por el host: registros "deviceId|name|token". */
+    fun tvLinkPairedClients(): Set<String> =
+        prefs.getStringSet(KEY_TV_LINK_CLIENTS, emptySet()).orEmpty()
+
+    fun setTvLinkPairedClients(records: Set<String>) {
+        prefs.edit().putStringSet(KEY_TV_LINK_CLIENTS, records).apply()
+    }
+
     // -- Internals ------------------------------------------------------------
 
     private fun booleanFlow(key: String, default: Boolean): Flow<Boolean> = callbackFlow {
@@ -217,6 +271,10 @@ class AppPreferences @Inject constructor(
         const val KEY_BUFFER_PROFILE = "buffer_profile"
         const val KEY_LIVE_RECONNECT_CONTINUOUS = "live_reconnect_continuous"
         const val KEY_LAST_LIVE_CHANNEL = "last_live_channel_id"
+        const val KEY_TV_LINK_HOST = "tvlink_host_enabled"
+        const val KEY_TV_LINK_DEVICE_ID = "tvlink_device_id"
+        const val KEY_TV_LINK_TVS = "tvlink_known_tvs"
+        const val KEY_TV_LINK_CLIENTS = "tvlink_paired_clients"
         const val BUFFER_AUTO = "auto"
         const val BUFFER_LOW = "low"
         const val BUFFER_HIGH = "high"

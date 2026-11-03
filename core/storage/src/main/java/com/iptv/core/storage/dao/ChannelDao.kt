@@ -42,6 +42,15 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE id = :id")
     suspend fun findById(id: Long): ChannelEntity?
 
+    @Query("SELECT * FROM channels WHERE externalId = :externalId LIMIT 1")
+    suspend fun findByExternalIdAnySource(externalId: String): ChannelEntity?
+
+    @Query("SELECT * FROM channels WHERE sourceId = :sourceId AND providerNameNorm = :norm LIMIT 1")
+    suspend fun findByProviderNameNorm(sourceId: Long, norm: String): ChannelEntity?
+
+    @Query("SELECT * FROM channels WHERE providerNameNorm = :norm LIMIT 1")
+    suspend fun findByProviderNameNormAny(norm: String): ChannelEntity?
+
     /** true si el canal pertenece a una categoría bloqueada por control parental. */
     @Query("SELECT EXISTS(SELECT 1 FROM channels c INNER JOIN categories cat ON cat.id = c.categoryId WHERE c.id = :channelId AND cat.isLocked = 1)")
     suspend fun isInLockedCategory(channelId: Long): Boolean
@@ -216,6 +225,64 @@ interface ChannelDao {
     @Query("SELECT id FROM channels WHERE id = :id AND sourceId = :sourceId AND kind = 'LIVE' AND $UNLOCKED_ONLY")
     suspend fun liveChannelIdOrNull(id: Long, sourceId: Long): Long?
 
+    // -- Catálogo remoto (tv-link): páginas suspend, una respuesta por
+    //    petición — las variantes PagingSource están pensadas para LazyColumn.
+
+    /** Página filtrada para el catálogo que sirve el enlace móvil ↔ TV.
+     *  `group`/`uncat`: tres estados — todo el tipo, un grupo concreto o
+     *  sólo canales sin categoría. */
+    @Query(
+        "SELECT * FROM channels WHERE sourceId = :sourceId AND kind = :kind " +
+            "AND externalId NOT LIKE 'episode:%' " +
+            "AND ((:group IS NULL AND :uncat = 0) OR groupTitle = :group " +
+            "OR (:uncat = 1 AND (groupTitle IS NULL OR groupTitle = ''))) " +
+            "AND (:favoritesOnly = 0 OR isFavorite = 1) " +
+            "AND (:language IS NULL OR language = :language) " +
+            "AND (:query IS NULL OR nameNorm LIKE '%' || :query || '%' ESCAPE '\\') " +
+            "AND $UNLOCKED_ONLY ORDER BY sortOrder, name LIMIT :limit OFFSET :offset",
+    )
+    suspend fun listForRemote(
+        sourceId: Long,
+        kind: String,
+        group: String?,
+        uncat: Boolean,
+        language: String?,
+        favoritesOnly: Boolean,
+        query: String?,
+        limit: Int,
+        offset: Int,
+    ): List<ChannelEntity>
+
+    /** Total del filtro de [listForRemote]: el mando sabe cuándo parar. */
+    @Query(
+        "SELECT COUNT(*) FROM channels WHERE sourceId = :sourceId AND kind = :kind " +
+            "AND externalId NOT LIKE 'episode:%' " +
+            "AND ((:group IS NULL AND :uncat = 0) OR groupTitle = :group " +
+            "OR (:uncat = 1 AND (groupTitle IS NULL OR groupTitle = ''))) " +
+            "AND (:favoritesOnly = 0 OR isFavorite = 1) " +
+            "AND (:language IS NULL OR language = :language) " +
+            "AND (:query IS NULL OR nameNorm LIKE '%' || :query || '%' ESCAPE '\\') " +
+            "AND $UNLOCKED_ONLY",
+    )
+    suspend fun countForRemote(
+        sourceId: Long,
+        kind: String,
+        group: String?,
+        uncat: Boolean,
+        language: String?,
+        favoritesOnly: Boolean,
+        query: String?,
+    ): Int
+
+    /** Conteo por grupo (groupTitle) para los chips del catálogo remoto. */
+    @Query(
+        "SELECT groupTitle AS groupKey, COUNT(*) AS count FROM channels " +
+            "WHERE sourceId = :sourceId AND kind = :kind " +
+            "AND externalId NOT LIKE 'episode:%' AND $UNLOCKED_ONLY " +
+            "GROUP BY groupTitle ORDER BY count DESC",
+    )
+    suspend fun remoteGroupCounts(sourceId: Long, kind: String): List<RemoteGroupCount>
+
     // -- Descargas ------------------------------------------------------------
     // El carrusel/parrilla "Descargados" une downloads→channels para reutilizar
     // las tarjetas del catálogo; el estado/progreso llega por DownloadDao.
@@ -351,3 +418,6 @@ data class ChannelIdName(val id: Long, val name: String)
 
 /** Proyección para el re-etiquetado completo: nombre + categoría heredable. */
 data class ChannelIdNameCategory(val id: Long, val name: String, val categoryId: Long?)
+
+/** Proyección del conteo por grupo del catálogo remoto (tv-link). */
+data class RemoteGroupCount(val groupKey: String?, val count: Int)
